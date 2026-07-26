@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: code-zero-web
+    env: node
+    plan: starter
+    branch: main
+    autoDeploy: true
+    buildCommand: npm install && npm run build
+    startCommand: npm run start
+    root: ./
+    envVars:
+      - key: NODE_ENV
+        value: production

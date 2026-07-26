@@ -1,0 +1,250 @@
+import type { LucideIcon } from 'lucide-react'
+import {
+  Activity,
+  Wrench,
+  PlugZap,
+  ShieldCheck,
+  CalendarClock,
+  Factory,
+  LayoutGrid,
+  Lightbulb,
+  Cpu,
+  Building2,
+  Home,
+} from 'lucide-react'
+
+const defaultServiceDefinitions = {
+  diagnostico: {
+    name: 'Diagnóstico eléctrico',
+    short: 'Detección de fallas',
+    description: 'Revisión técnica completa para detectar fallas, sobrecargas y riesgos en tu instalación.',
+    icon: Activity,
+    from: 29990,
+  },
+  reparaciones: {
+    name: 'Reparaciones eléctricas',
+    short: 'Solución de fallas',
+    description: 'Reparación de cortocircuitos, tomas, cables y equipos con repuestos certificados.',
+    icon: Wrench,
+    from: 34990,
+    emergency: true,
+  },
+  instalaciones: {
+    name: 'Instalaciones eléctricas',
+    short: 'Nuevas conexiones',
+    description: 'Instalación de puntos, enchufes, circuitos y equipos según normativa vigente.',
+    icon: PlugZap,
+    from: 39990,
+  },
+  certificacion: {
+    name: 'Certificación SEC',
+    short: 'TE1 / TE2',
+    description: 'Emisión y tramitación de certificados SEC para tu propiedad o negocio.',
+    icon: ShieldCheck,
+    from: 59990,
+  },
+  mantenimiento: {
+    name: 'Mantenimiento preventivo',
+    short: 'Planes periódicos',
+    description: 'Inspecciones programadas para evitar fallas y prolongar la vida útil de tus equipos.',
+    icon: CalendarClock,
+    from: 24990,
+  },
+  industrial: {
+    name: 'Mantenimiento industrial',
+    short: 'Plantas y faenas',
+    description: 'Mantenimiento especializado para maquinaria y sistemas de alto consumo.',
+    icon: Factory,
+    from: 89990,
+  },
+  tableros: {
+    name: 'Tableros eléctricos',
+    short: 'Diseño y armado',
+    description: 'Diseño, armado y normalización de tableros de distribución y control.',
+    icon: LayoutGrid,
+    from: 69990,
+  },
+  iluminacion: {
+    name: 'Iluminación LED',
+    short: 'Eficiencia energética',
+    description: 'Recambio y proyectos de iluminación LED para ahorro y confort.',
+    icon: Lightbulb,
+    from: 19990,
+  },
+  automatizacion: {
+    name: 'Automatización',
+    short: 'Domótica e industria',
+    description: 'Automatización de procesos, domótica y control inteligente de energía.',
+    icon: Cpu,
+    from: 79990,
+  },
+  empresas: {
+    name: 'Soluciones para empresas',
+    short: 'Proyectos a medida',
+    description: 'Planes integrales de energía y mantenimiento para comercios e industrias.',
+    icon: Building2,
+    from: 0,
+  },
+  hogares: {
+    name: 'Soluciones para hogares',
+    short: 'Tu casa segura',
+    description: 'Servicios completos para mantener tu hogar seguro y eficiente.',
+    icon: Home,
+    from: 0,
+  },
+} as const
+
+export type Service = {
+  id: string
+  name: string
+  short: string
+  description: string
+  icon: LucideIcon
+  from: number
+  emergency?: boolean
+}
+
+export const serviceDefinitions: Record<string, Omit<Service, 'id'>> = defaultServiceDefinitions
+
+function resolveServiceDefinitions(overrides?: Array<{ id?: string; name?: string; short?: string; description?: string; from?: number; emergency?: boolean }>) {
+  const fallback = defaultServiceDefinitions
+
+  if (!Array.isArray(overrides) || overrides.length === 0) {
+    return { ...fallback }
+  }
+
+  const merged: Record<string, Omit<Service, 'id'>> = {}
+
+  overrides.forEach((service, index) => {
+    const id = String(service.id || `servicio-${index + 1}`)
+    const key = id.toLowerCase().normalize('NFD').replace(/[^a-z0-9]/g, '')
+    const fallbackDefinition = fallback[key as keyof typeof fallback] ?? fallback[Object.keys(fallback)[0]]
+
+    merged[key] = {
+      name: service.name || fallbackDefinition?.name || 'Servicio',
+      short: service.short || fallbackDefinition?.short || 'Servicio',
+      description: service.description || fallbackDefinition?.description || '',
+      icon: fallbackDefinition?.icon || Activity,
+      from: Number(service.from ?? fallbackDefinition?.from ?? 0),
+      emergency: Boolean(service.emergency ?? fallbackDefinition?.emergency),
+    }
+  })
+
+  return merged
+}
+
+export function buildServicesFromConfig(overrides?: Array<{ id?: string; name?: string; short?: string; description?: string; from?: number; emergency?: boolean }>): Service[] {
+  const definitions = resolveServiceDefinitions(overrides)
+  return Object.entries(definitions).map(([id, service]) => ({ ...service, id }))
+}
+
+export const services: Service[] = buildServicesFromConfig()
+
+export const serviceChecklists: Record<string, string[]> = {
+  diagnostico: [
+    'Verificar alimentación y consumo del circuito',
+    'Inspeccionar protecciones (breakers, fusibles)',
+    'Medir continuidad y resistencia en conductores críticos',
+    'Detectar puntos calientes o conexiones flojas',
+    'Registrar observaciones y tomar fotografías relevantes',
+    'Informar posible causa raíz y recomendaciones',
+  ],
+  reparaciones: [
+    'Aislar circuito y comprobar ausencia de tensión',
+    'Reemplazar conductor, toma o elemento defectuoso',
+    'Reparar conexiones y apretar bornes según torque recomendado',
+    'Verificar puesta a tierra y continuidad',
+    'Probar funcionamiento y medir parámetros eléctricos',
+    'Registrar repuestos usados y fotografiar trabajo',
+  ],
+  certificacion: [
+    'Revisar antecedentes del equipo y normativa aplicable',
+    'Realizar inspección visual completa',
+    'Mediciones de aislamiento y resistencia según protocolo',
+    'Verificar protecciones y selectividad',
+    'Completar formularios de certificación y adjuntar fotos',
+    'Firmar y entregar copia del informe al cliente',
+  ],
+  mantenimiento: [
+    'Desenergizar equipo y señalizar área de trabajo',
+    'Limpiar y lubricar componentes según procedimiento',
+    'Ajustes y calibraciones necesarios',
+    'Verificar consumibles y estado general',
+    'Probar operación bajo carga y registrar resultados',
+    'Recomendar acciones preventivas y próxima fecha',
+  ],
+  instalaciones: [
+    'Confirmar ubicación y requisitos del cliente',
+    'Verificar ruta de cableado y puntos de fijación',
+    'Realizar conexionado según esquema y normas',
+    'Probar circuitos e indicadores',
+    'Asegurar documentación y planos actualizados',
+    'Entregar instructivo básico al cliente',
+  ],
+  tableros: [
+    'Inspeccionar estado físico del tablero',
+    'Verificar etiquetado y diagramas',
+    'Medir tensiones y corrientes en puntos clave',
+    'Comprobar protecciones y coordinación',
+    'Asegurar disipación de calor y ventilación',
+    'Registrar cualquier no conformidad',
+  ],
+  iluminacion: [
+    'Comprobar alimentación y control de encendido',
+    'Verificar estado de luminarias y difusores',
+    'Medir consumo y lumenes donde aplique',
+    'Reemplazar lámparas defectuosas',
+    'Asegurar fijaciones y nivel de protección IP',
+    'Probar escenas o automatizaciones si existen',
+  ],
+  automatizacion: [
+    'Revisar estructura de control y comunicaciones',
+    'Verificar entradas/salidas y señales',
+    'Comprobar programación básica y setpoints',
+    'Probar secuencias y alarmas',
+    'Registrar valores y estados antes/después',
+    'Asegurar respaldo de configuración',
+  ],
+  default: [
+    'Inspección visual inicial',
+    'Confirmar datos de cliente y ubicación',
+    'Tomar fotografías del sitio y del problema',
+    'Registrar acciones ejecutadas y repuestos usados',
+    'Solicitar firma del cliente al finalizar',
+  ],
+}
+
+export function formatCLP(value: number) {
+  return new Intl.NumberFormat('es-CL', {
+    style: 'currency',
+    currency: 'CLP',
+    maximumFractionDigits: 0,
+  }).format(value)
+}
+
+export function getFriendlyServiceName(value: string | null | undefined) {
+  const text = String(value ?? '').trim().toLowerCase()
+  if (!text) return 'Servicio'
+  if (text.includes('diagn') || text.includes('elect')) return 'Diagnóstico eléctrico'
+  if (text.includes('repar')) return 'Reparaciones eléctricas'
+  if (text.includes('instal')) return 'Instalaciones eléctricas'
+  if (text.includes('cert')) return 'Certificación SEC'
+  if (text.includes('mant')) return 'Mantenimiento preventivo'
+  if (text.includes('industrial')) return 'Mantenimiento industrial'
+  if (text.includes('tablero')) return 'Tableros eléctricos'
+  if (text.includes('ilumin')) return 'Iluminación LED'
+  if (text.includes('automat')) return 'Automatización'
+  return 'Servicio'
+}
+
+export const statusOrder = ['pendiente', 'en camino', 'en proceso', 'finalizado', 'rechazado'] as const
+
+export type ServiceStatus = (typeof statusOrder)[number]
+
+export function normalizeServiceValue(value: unknown) {
+  return String(value ?? '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[^\w\s]/g, '')
+    .replace(/\s+/g, '-')
+}
