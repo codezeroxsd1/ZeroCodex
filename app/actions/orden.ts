@@ -308,13 +308,13 @@ export async function updateOrdenStatus(
             break
         }
 
-        const historial = appendHistorial(existingOrden.historial, historyTitle, historyDetails)
+        const historial = appendHistorial(existingOrden.historial ?? '', historyTitle, historyDetails)
         const notificationMessages = buildStatusNotificationMessages(String(existingOrden.id), String(existingOrden.estado ?? ''), String(nuevoEstado))
         updateValues.historial = appendNotificationMessages(historial, notificationMessages)
       }
 
       if (!statusChanged && options?.appendHistory) {
-        const historial = appendHistorial(existingOrden.historial, options.appendHistory.title, options.appendHistory.details)
+        const historial = appendHistorial(existingOrden.historial ?? '', options.appendHistory.title, options.appendHistory.details)
         updateValues.historial = historial
       }
     }
