@@ -99,8 +99,8 @@ function parseHistorial(raw: unknown): HistoryEntry[] {
   return []
 }
 
-function appendHistorial(raw: string | undefined | null, title: string, details?: string) {
-  const entries = parseHistorial(raw ?? '')
+function appendHistorial(raw: unknown, title: string, details?: string) {
+  const entries = parseHistorial(raw)
   entries.push({ timestamp: new Date().toISOString(), title, details })
   return JSON.stringify(entries)
 }
@@ -308,13 +308,15 @@ export async function updateOrdenStatus(
             break
         }
 
-        const historial = appendHistorial(existingOrden.historial, historyTitle, historyDetails)
+        const safeHistorial = String(existingOrden.historial ?? '')
+        const historial = appendHistorial(safeHistorial, historyTitle, historyDetails)
         const notificationMessages = buildStatusNotificationMessages(String(existingOrden.id), String(existingOrden.estado ?? ''), String(nuevoEstado))
         updateValues.historial = appendNotificationMessages(historial, notificationMessages)
       }
 
       if (!statusChanged && options?.appendHistory) {
-        const historial = appendHistorial(existingOrden.historial, options.appendHistory.title, options.appendHistory.details)
+        const safeHistorial = String(existingOrden.historial ?? '')
+        const historial = appendHistorial(safeHistorial, options.appendHistory.title, options.appendHistory.details)
         updateValues.historial = historial
       }
     }
