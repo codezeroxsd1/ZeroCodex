@@ -314,7 +314,7 @@ export async function updateOrdenStatus(
       }
 
       if (!statusChanged && options?.appendHistory) {
-        const historial = appendHistorial(existingOrden.historial ?? '', options.appendHistory.title, options.appendHistory.details)
+        const historial = appendHistorial((existingOrden.historial ?? '') as string, options.appendHistory.title, options.appendHistory.details)
         updateValues.historial = historial
       }
     }
