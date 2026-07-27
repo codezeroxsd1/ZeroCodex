@@ -96,8 +96,19 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
     }
   })
 
-  // quotes left empty (no quotes table present)
-  const quotes: any[] = []
+  // If there's no dedicated quotes table, derive simple quote records from orders
+  // This recovers the 'Cotizaciones' view when the backend/table isn't present.
+  const quotes: any[] = (orders || [])
+    .filter((o: any) => Number(o.precio ?? 0) > 0)
+    .map((o: any) => ({
+      id: o.id,
+      client: o.clienteNombre || o.client || 'Cliente',
+      service: getFriendlyServiceName(o.categoria || o.service || o.descripcion || 'Servicio'),
+      date: o.date || o.createdAt || o.created_at || undefined,
+      total: Number(o.precio ?? o.price ?? o.total ?? 0),
+      status: (o.status || o.estado || 'Enviada'),
+    }))
+
 
   return <AdminPanel
     clients={clients}

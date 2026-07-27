@@ -2443,7 +2443,7 @@ function Configuraciones({ initialTab }: { initialTab?: 'agenda' | 'servicios' |
   const addService = () => {
     setSettings({
       ...settings,
-      services: [...(settings.services ?? []), { id: `nuevo-${Date.now()}`, name: 'Nuevo servicio', short: 'Nuevo', description: '', from: 0, visitPrice: 12000, markupPercent: 0, ivaPercent: 19, emergency: false }],
+      services: [...(settings.services ?? []), { id: `nuevo-${Date.now()}`, name: 'Nuevo servicio', short: 'Nuevo', description: '', from: 0, visitPrice: 12000, hours: 1, markupPercent: 0, ivaPercent: 19, emergency: false }],
     })
   }
 
@@ -2674,7 +2674,7 @@ function Configuraciones({ initialTab }: { initialTab?: 'agenda' | 'servicios' |
                     <input value={service.name || ''} onChange={(e) => updateServiceField(index, 'name', e.target.value)} className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm" />
                     <button onClick={() => removeService(index)} className="rounded-lg border border-destructive/20 p-2 text-destructive"><Trash2 className="size-4" /></button>
                   </div>
-                  <div className="grid gap-3 md:grid-cols-4">
+                  <div className="grid gap-3 md:grid-cols-5">
                     <label className="text-sm">
                       <span className="mb-1 block text-muted-foreground">Nombre corto</span>
                       <input value={service.short || ''} onChange={(e) => updateServiceField(index, 'short', e.target.value)} className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm" />
@@ -2686,6 +2686,10 @@ function Configuraciones({ initialTab }: { initialTab?: 'agenda' | 'servicios' |
                     <label className="text-sm">
                       <span className="mb-1 block text-muted-foreground">Precio visita</span>
                       <input type="number" value={service.visitPrice ?? 12000} onChange={(e) => updateServiceField(index, 'visitPrice', Number(e.target.value))} className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm" />
+                    </label>
+                    <label className="text-sm">
+                      <span className="mb-1 block text-muted-foreground">Horas</span>
+                      <input type="number" step="0.5" value={service.hours ?? 1} onChange={(e) => updateServiceField(index, 'hours', Number(e.target.value))} className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm" />
                     </label>
                     <label className="text-sm">
                       <span className="mb-1 block text-muted-foreground">Ganancia %</span>
