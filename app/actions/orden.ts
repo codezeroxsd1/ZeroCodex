@@ -517,7 +517,7 @@ export async function crearOrden(data: {
       return { success: false, error: 'Capacidad máxima alcanzada para esa franja horaria' }
     }
 
-    const insertValues: Record<string, unknown> = {
+    const insertValues = {
       clienteId: user.id,
       clienteNombre: user.name,
       clienteTelefono: user.phone ?? null,
@@ -527,25 +527,18 @@ export async function crearOrden(data: {
       urgencia: data.urgencia,
       estado: 'pendiente',
       precio: data.precio,
-    }
-
-    if (scheduledDate) {
-      insertValues.date = scheduledDate
-    }
-
-    if (data.date && data.time) {
-      insertValues.localDate = data.date
-      insertValues.localTime = data.time
-    }
-
-    if (data.descripcion) {
-      insertValues.historial = JSON.stringify([
-        {
-          timestamp: new Date().toISOString(),
-          title: 'Orden creada',
-          details: data.descripcion,
-        },
-      ])
+      date: scheduledDate ?? null,
+      localDate: data.date || null,
+      localTime: data.time || null,
+      historial: data.descripcion
+        ? JSON.stringify([
+            {
+              timestamp: new Date().toISOString(),
+              title: 'Orden creada',
+              details: data.descripcion,
+            },
+          ])
+        : null,
     }
 
     const [created] = await db.insert(orden).values(insertValues).returning({ id: orden.id })
