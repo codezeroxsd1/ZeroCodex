@@ -20,11 +20,13 @@ import {
   Bell,
   Zap,
   Search,
+  Star,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Logo } from '@/components/brand/logo'
 import { StatusBadge } from '@/components/status-badge'
 import { SignaturePad } from './signature-pad'
+import { CircuitCalculator } from './circuit-calculator'
 import {
   workOrders,
   serviceDefinitions,
@@ -132,13 +134,43 @@ function parseEvidence(raw: any) {
   return null
 }
 
+function parseFeedbackPayload(raw: any) {
+  if (!raw) return null
+  if (typeof raw === 'string') {
+    try {
+      const parsed = JSON.parse(raw)
+      return parsed && typeof parsed === 'object' ? parsed : raw
+    } catch {
+      return raw
+    }
+  }
+  if (typeof raw === 'object') return raw
+  return null
+}
+
+const technicianVisibleStatuses = ['pendiente', 'en camino', 'en proceso', 'en progreso', 'finalizado', 'finalizada'] as const
+
+function normalizeTechnicianStatus(status: unknown) {
+  return String(status ?? '').trim().toLowerCase()
+}
+
+function isTechnicianVisibleStatus(status: unknown) {
+  const normalized = normalizeTechnicianStatus(status)
+  return technicianVisibleStatuses.includes(normalized as (typeof technicianVisibleStatuses)[number])
+}
+
 export function TecnicoApp({ initialOrders }: { initialOrders?: any[] }) {
   const router = useRouter()
   const { data: session } = useSession()
   const [active, setActive] = useState<WorkOrder | null>(null)
   const [showProfile, setShowProfile] = useState(false)
   const [showNotifications, setShowNotifications] = useState(false)
+  const [viewMode, setViewMode] = useState<'activa' | 'historial'>('activa')
   const [orders, setOrders] = useState<any[]>(initialOrders ?? workOrders)
+  const [ratingOrder, setRatingOrder] = useState<any | null>(null)
+  const [ratingValue, setRatingValue] = useState(5)
+  const [ratingComment, setRatingComment] = useState('')
+  const [savingRating, setSavingRating] = useState(false)
   const [notifications, setNotifications] = useState<any[]>([])
   const [hasUnreadNotifications, setHasUnreadNotifications] = useState(false)
   const ordersRef = useRef<any[]>(initialOrders ?? workOrders)
@@ -155,13 +187,15 @@ export function TecnicoApp({ initialOrders }: { initialOrders?: any[] }) {
       ? String(oTechName).toLowerCase() === String(technicianName).toLowerCase()
       : false
 
-    return hasAssignedTech ? assignedToThisTech : false
+    return hasAssignedTech ? assignedToThisTech && isTechnicianVisibleStatus(o.status ?? o.estado) : false
   })
 
-  const completedOrdersCount = relevantOrders.filter((o: any) => String(o.status ?? o.estado ?? '').toLowerCase() === 'finalizado').length
-  const rejectedOrdersCount = relevantOrders.filter((o: any) => String(o.status ?? o.estado ?? '').toLowerCase() === 'rechazado').length
+  const completedOrdersCount = relevantOrders.filter((o: any) => {
+    const estado = normalizeTechnicianStatus(o.status ?? o.estado)
+    return estado === 'finalizado' || estado === 'finalizada'
+  }).length
   const inProgressCount = relevantOrders.filter((o: any) => {
-    const estado = String(o.status ?? o.estado ?? '').toLowerCase()
+    const estado = normalizeTechnicianStatus(o.status ?? o.estado)
     return ['en progreso', 'en proceso', 'en camino'].includes(estado)
   }).length
 
@@ -174,10 +208,15 @@ export function TecnicoApp({ initialOrders }: { initialOrders?: any[] }) {
   useEffect(() => {
     const interval = setInterval(async () => {
       try {
-        const response = await fetch('/api/tecnico/orders')
-        if (!response.ok) return
-        const payload = await response.json()
-        const nextOrders = payload?.orders ?? []
+        const response = await fetch('/api/tecnico/orders', { cache: 'no-store' })
+        if (!response.ok) {
+          const nextOrders: any[] = []
+          ordersRef.current = nextOrders
+          setOrders(nextOrders)
+          return
+        }
+        const payload = await response.json().catch(() => ({ orders: [] }))
+        const nextOrders = Array.isArray(payload?.orders) ? payload.orders : []
 
         const incoming = diffOrderNotifications(ordersRef.current, nextOrders, 'tecnico')
         if (ordersRef.current.length > 0 && incoming.length > 0) {
@@ -202,9 +241,96 @@ export function TecnicoApp({ initialOrders }: { initialOrders?: any[] }) {
   }, [showNotifications])
 
   const assignedOrders = orders.filter((o: any) => {
-    const estado = String(o.status ?? o.estado ?? '').toLowerCase()
-    return estado === 'en progreso'
+    const estado = normalizeTechnicianStatus(o.status ?? o.estado)
+    return ['en progreso', 'en proceso', 'en camino'].includes(estado)
   })
+
+  const averageRating = useMemo(() => {
+    if (!technicianId) return 0
+    let total = 0
+    let count = 0
+    for (const o of orders) {
+      const oTechId = o.tecnicoId ?? o.tecnicoid ?? null
+      const oTechName = o.tecnicoNombre ?? o.tecniconombre ?? null
+      const assignedToThisTech = technicianId
+        ? String(oTechId) === String(technicianId)
+        : technicianName
+        ? String(oTechName).toLowerCase() === String(technicianName).toLowerCase()
+        : false
+      if (!assignedToThisTech) continue
+      const parsed = parseFeedbackPayload(o.notasTecnico ?? o.feedback ?? null)
+      const clientRating = parsed?.rating ?? (parsed?.clientRating && parsed.clientRating.score ? parsed.clientRating.score : undefined)
+      if (clientRating !== undefined && clientRating !== null) {
+        total += Number(clientRating) || 0
+        count += 1
+      }
+    }
+    return count > 0 ? Math.round((total / count) * 10) / 10 : 0
+  }, [orders, technicianId, technicianName])
+
+  const resolveOrderId = (order: any) => {
+    const candidates = [
+      order?.id,
+      order?.orderId,
+      order?.ordenId,
+      order?.order?.id,
+      order?.order?.orderId,
+    ]
+
+    for (const candidate of candidates) {
+      if (candidate == null) continue
+      const text = String(candidate).trim()
+      if (text && text !== 'null' && text !== 'undefined') return text
+    }
+
+    return null
+  }
+
+  const handleSaveRating = async () => {
+    if (!ratingOrder) return
+
+    const orderId = resolveOrderId(ratingOrder)
+    if (!orderId) {
+      window.alert('No se pudo identificar la orden para guardar la valoración.')
+      return
+    }
+
+    setSavingRating(true)
+    try {
+      const currentStatus = normalizeTechnicianStatus((ratingOrder as any).status ?? (ratingOrder as any).estado)
+      const statusToSave = currentStatus === 'por_validar' ? 'por_validar' : 'finalizado'
+      const parsedFeedback = parseFeedbackPayload((ratingOrder as any).notasTecnico ?? (ratingOrder as any).feedback ?? null)
+      const nextFeedback = {
+        ...(parsedFeedback && typeof parsedFeedback === 'object' && !Array.isArray(parsedFeedback) ? parsedFeedback : {}),
+        clientRating: {
+          score: ratingValue,
+          comment: ratingComment.trim(),
+          ratedAt: new Date().toISOString(),
+        },
+      }
+
+      const result = await updateOrdenStatus(orderId, statusToSave as any, {
+        feedback: JSON.stringify(nextFeedback),
+      })
+
+      if (result?.success) {
+        setOrders((prev) => prev.map((order) => String(order.id) === String(orderId)
+          ? { ...order, notasTecnico: JSON.stringify(nextFeedback), feedback: JSON.stringify(nextFeedback) }
+          : order))
+        setRatingOrder(null)
+        setRatingComment('')
+        setRatingValue(5)
+        window.alert('Valoración guardada correctamente.')
+      } else {
+        window.alert(result?.error || 'No se pudo guardar la valoración.')
+      }
+    } catch (error) {
+      console.error('Error saving client rating:', error)
+      window.alert('No se pudo guardar la valoración.')
+    } finally {
+      setSavingRating(false)
+    }
+  }
 
   return (
     <div className="h-screen w-full overflow-hidden bg-background">
@@ -219,6 +345,14 @@ export function TecnicoApp({ initialOrders }: { initialOrders?: any[] }) {
               <p className="font-semibold">Ruta de hoy</p>
               <p className="mt-1 text-muted-foreground">{assignedOrders.length} ordenes asignadas · {orders.filter((o:any)=>String(o.urgencia||'').toLowerCase()==='urgente').length} urgencia</p>
             </div>
+              <div className="rounded-2xl border border-border bg-background/60 p-3 text-sm">
+                <p className="font-semibold">Calificación</p>
+                <p className="mt-1 flex items-center gap-2">
+                  <Star className="size-4 fill-warning text-warning" />
+                  <span className="font-semibold">{averageRating ?? 0}</span>
+                  <span className="text-xs text-muted-foreground">promedio</span>
+                </p>
+              </div>
             <div className="rounded-2xl border border-border bg-background/60 p-3 text-sm">
               <p className="font-semibold">Herramientas</p>
               <ul className="mt-2 space-y-1 text-muted-foreground">
@@ -341,25 +475,92 @@ export function TecnicoApp({ initialOrders }: { initialOrders?: any[] }) {
           <div className="flex-1 overflow-y-auto p-4 lg:p-6">
             {active ? (
               <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-2">
                   <div className="rounded-2xl border border-border bg-card p-3 text-center">
                     <p className="font-display text-xl font-bold text-primary">{inProgressCount}</p>
                     <p className="text-[11px] text-muted-foreground">En curso</p>
                   </div>
                   <div className="rounded-2xl border border-border bg-card p-3 text-center">
                     <p className="font-display text-xl font-bold text-primary">{completedOrdersCount}</p>
-                    <p className="text-[11px] text-muted-foreground">Completadas</p>
-                  </div>
-                  <div className="rounded-2xl border border-border bg-card p-3 text-center">
-                    <p className="font-display text-xl font-bold text-primary">{rejectedOrdersCount}</p>
-                    <p className="text-[11px] text-muted-foreground">Rechazadas</p>
+                    <p className="text-[11px] text-muted-foreground">Finalizadas</p>
                   </div>
                 </div>
                 <OrderDetail order={active} onClose={() => setActive(null)} />
               </div>
             ) : (
-              <OrderList onOpen={setActive} initialOrders={orders} technicianId={session?.user?.id ?? null} technicianName={session?.user?.name ?? null} compact={false} />
+              <div className="space-y-4">
+                <div className="flex gap-2 rounded-2xl border border-border bg-card p-1">
+                  <button
+                    type="button"
+                    onClick={() => setViewMode('activa')}
+                    className={cn(
+                      'flex-1 rounded-xl px-3 py-2 text-sm font-semibold transition',
+                      viewMode === 'activa' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground',
+                    )}
+                  >
+                    Órdenes activas
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setViewMode('historial')}
+                    className={cn(
+                      'flex-1 rounded-xl px-3 py-2 text-sm font-semibold transition',
+                      viewMode === 'historial' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground',
+                    )}
+                  >
+                    Historial
+                  </button>
+                </div>
+
+                {viewMode === 'historial' ? (
+                  <HistoryList
+                    initialOrders={orders}
+                    technicianId={session?.user?.id ?? null}
+                    technicianName={session?.user?.name ?? null}
+                    onRateOrder={setRatingOrder}
+                  />
+                ) : (
+                  <OrderList onOpen={setActive} initialOrders={orders} technicianId={session?.user?.id ?? null} technicianName={session?.user?.name ?? null} compact={false} />
+                )}
+              </div>
             )}
+
+            {ratingOrder ? (
+              <div className="mt-4 rounded-2xl border border-border bg-card p-4 shadow-xl">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold">Calificar al cliente</p>
+                    <p className="mt-1 text-xs text-muted-foreground">{(ratingOrder as any).client ?? (ratingOrder as any).clienteNombre ?? 'Cliente'}</p>
+                  </div>
+                  <button type="button" onClick={() => setRatingOrder(null)} className="text-sm text-muted-foreground">Cerrar</button>
+                </div>
+                <div className="mt-3 flex items-center gap-2">
+                  {Array.from({ length: 5 }).map((_, index) => {
+                    const value = index + 1
+                    return (
+                      <button key={value} type="button" onClick={() => setRatingValue(value)} className="text-amber-500">
+                        <Star className={cn('size-5', value <= ratingValue ? 'fill-current' : 'opacity-50')} />
+                      </button>
+                    )
+                  })}
+                </div>
+                <textarea
+                  value={ratingComment}
+                  onChange={(event) => setRatingComment(event.target.value)}
+                  rows={3}
+                  placeholder="Agrega un comentario breve sobre la experiencia con el cliente..."
+                  className="mt-3 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary/60"
+                />
+                <div className="mt-3 flex gap-2">
+                  <button type="button" onClick={handleSaveRating} disabled={savingRating} className="rounded-full bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-50">
+                    {savingRating ? 'Guardando...' : 'Guardar valoración'}
+                  </button>
+                  <button type="button" onClick={() => setRatingOrder(null)} className="rounded-full border border-border bg-background px-4 py-2 text-sm font-semibold text-muted-foreground">
+                    Cancelar
+                  </button>
+                </div>
+              </div>
+            ) : null}
           </div>
         </div>
       </div>
@@ -368,6 +569,83 @@ export function TecnicoApp({ initialOrders }: { initialOrders?: any[] }) {
 }
 
 // Note: Login handled elsewhere; removed fake login UI.
+
+function HistoryList({ initialOrders, technicianId, technicianName, onRateOrder }: { initialOrders?: any[]; technicianId?: string | null; technicianName?: string | null; onRateOrder: (order: any) => void }) {
+  const orders = initialOrders ?? workOrders
+  const techId = technicianId ?? null
+  const techName = technicianName ?? null
+
+  const relevantOrders = orders.filter((o: any) => {
+    const oTechId = o.tecnicoId ?? o.tecnicoid ?? null
+    const oTechName = o.tecnicoNombre ?? o.tecniconombre ?? null
+    const hasAssignedTech = Boolean(oTechId || oTechName)
+    const assignedToThisTech = techId
+      ? String(oTechId) === String(techId)
+      : techName
+      ? String(oTechName).toLowerCase() === String(techName).toLowerCase()
+      : false
+
+    const normalizedStatus = normalizeTechnicianStatus(o.status ?? o.estado)
+    const isCompletedLike = normalizedStatus === 'finalizado' || normalizedStatus === 'finalizada' || normalizedStatus === 'por_validar'
+
+    return hasAssignedTech ? assignedToThisTech && isCompletedLike : false
+  })
+
+  return (
+    <div className="space-y-3">
+      {relevantOrders.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-border bg-card/70 p-6 text-center text-sm text-muted-foreground">
+          Aún no tienes órdenes finalizadas para ver en el historial.
+        </div>
+      ) : relevantOrders.sort((a: any, b: any) => {
+        const aDate = parseRequestedSchedule(a)
+        const bDate = parseRequestedSchedule(b)
+        if (!aDate && !bDate) return 0
+        if (!aDate) return 1
+        if (!bDate) return -1
+        return bDate.getTime() - aDate.getTime()
+      }).map((order) => {
+        const parsedFeedback = parseFeedbackPayload((order as any).notasTecnico ?? (order as any).feedback ?? null)
+        const rating = parsedFeedback?.clientRating
+        return (
+          <div key={(order as any).id} className="rounded-2xl border border-border bg-card p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="truncate font-semibold">{(order as any).client ?? (order as any).clienteNombre ?? 'Cliente'}</p>
+                <p className="mt-1 text-xs text-muted-foreground">{getFriendlyServiceName((order as any).service ?? (order as any).categoria ?? (order as any).descripcion ?? 'Servicio')}</p>
+                <p className="mt-1 text-xs text-muted-foreground">{getRequestedDate(order)} · {getRequestedTime(order)}</p>
+              </div>
+              <StatusBadge status={(order as any).status ?? (order as any).estado ?? 'finalizado'} />
+            </div>
+            <div className="mt-3 flex items-center justify-between gap-2 rounded-xl border border-border bg-background/70 px-3 py-2">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Calificación cliente</p>
+                <p className="text-sm text-muted-foreground">{rating ? `${rating.score}/5` : 'Sin calificación aún'}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  try {
+                    // debug log to help trace why clicks might not trigger
+                    // eslint-disable-next-line no-console
+                    console.log('Rate button clicked for order', (order as any)?.id)
+                    onRateOrder?.(order)
+                  } catch (e) {
+                    // eslint-disable-next-line no-console
+                    console.error('Error invoking onRateOrder:', e)
+                  }
+                }}
+                className="rounded-full bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground"
+              >
+                {rating ? 'Editar valoración' : 'Valorar cliente'}
+              </button>
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
 
 function OrderList({ onOpen, initialOrders, compact, technicianId, technicianName }: { onOpen: (o: WorkOrder) => void; initialOrders?: any[]; compact?: boolean; technicianId?: string | null; technicianName?: string | null }) {
   const orders = initialOrders ?? workOrders
@@ -384,36 +662,34 @@ function OrderList({ onOpen, initialOrders, compact, technicianId, technicianNam
       ? String(oTechName).toLowerCase() === String(techName).toLowerCase()
       : false
 
-    return hasAssignedTech ? assignedToThisTech : false
+    return hasAssignedTech ? assignedToThisTech && isTechnicianVisibleStatus(o.status ?? o.estado) : false
   })
 
   const activeOrders = relevantOrders.filter((o: any) => {
-    const estado = String(o.status ?? o.estado ?? '').toLowerCase()
-    return estado !== 'finalizado' && estado !== 'rechazado'
+    const estado = normalizeTechnicianStatus(o.status ?? o.estado)
+    return ['pendiente', 'en progreso', 'en proceso', 'en camino'].includes(estado)
   })
 
-  const completedOrders = relevantOrders.filter((o: any) => String(o.status ?? o.estado ?? '').toLowerCase() === 'finalizado')
-  const rejectedOrders = relevantOrders.filter((o: any) => String(o.status ?? o.estado ?? '').toLowerCase() === 'rechazado')
+  const completedOrders = relevantOrders.filter((o: any) => {
+    const estado = normalizeTechnicianStatus(o.status ?? o.estado)
+    return estado === 'finalizado' || estado === 'finalizada'
+  })
 
   const inProgressCount = activeOrders.filter((o: any) => {
-    const estado = String(o.status ?? o.estado ?? '').toLowerCase()
+    const estado = normalizeTechnicianStatus(o.status ?? o.estado)
     return ['en progreso', 'en proceso', 'en camino'].includes(estado)
   }).length
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-2">
         <div className="rounded-2xl border border-border bg-card p-3 text-center">
           <p className="font-display text-xl font-bold text-primary">{inProgressCount}</p>
           <p className="text-[11px] text-muted-foreground">En curso</p>
         </div>
         <div className="rounded-2xl border border-border bg-card p-3 text-center">
           <p className="font-display text-xl font-bold text-primary">{completedOrders.length}</p>
-          <p className="text-[11px] text-muted-foreground">Completadas</p>
-        </div>
-        <div className="rounded-2xl border border-border bg-card p-3 text-center">
-          <p className="font-display text-xl font-bold text-primary">{rejectedOrders.length}</p>
-          <p className="text-[11px] text-muted-foreground">Rechazadas</p>
+          <p className="text-[11px] text-muted-foreground">Finalizadas</p>
         </div>
       </div>
 
@@ -478,6 +754,7 @@ const sections = [
   { id: 'checklist', label: 'Checklist', icon: ClipboardCheck },
   { id: 'fotos', label: 'Fotos', icon: Camera },
   { id: 'materiales', label: 'Materiales', icon: Package },
+  { id: 'calculadora', label: 'Calcular', icon: Zap },
   { id: 'evidence', label: 'Evidencia', icon: Zap },
   { id: 'firma', label: 'Firma', icon: PenLine },
 ] as const
@@ -515,6 +792,7 @@ function OrderDetail({ order, onClose }: { order: WorkOrder; onClose: () => void
   const [arrivalAtTime, setArrivalAtTime] = useState<string | Date | null>((order as any).arrivalAt ?? (order as any).workStartAt ?? null)
   const [workStartAtTime, setWorkStartAtTime] = useState<string | Date | null>((order as any).workStartAt ?? null)
   const [workEndAtTime, setWorkEndAtTime] = useState<string | Date | null>((order as any).workEndAt ?? null)
+  const [estimatedWorkHours, setEstimatedWorkHours] = useState<number | ''>(typeof (order as any).estimatedHours === 'number' ? (order as any).estimatedHours : '')
   const beforeInputRef = useRef<HTMLInputElement | null>(null)
   const afterInputRef = useRef<HTMLInputElement | null>(null)
 
@@ -523,6 +801,7 @@ function OrderDetail({ order, onClose }: { order: WorkOrder; onClose: () => void
     setArrivalAtTime((order as any).arrivalAt ?? (order as any).workStartAt ?? null)
     setWorkStartAtTime((order as any).workStartAt ?? null)
     setWorkEndAtTime((order as any).workEndAt ?? null)
+    setEstimatedWorkHours(typeof (order as any).estimatedHours === 'number' ? (order as any).estimatedHours : '')
   }, [order])
 
   const clientName = (order as any).client ?? (order as any).clienteNombre ?? (order as any).cliente
@@ -637,6 +916,34 @@ function OrderDetail({ order, onClose }: { order: WorkOrder; onClose: () => void
 
   const checklistItems = useMemo<ChecklistItem[]>(() => [...orderChecklistItems, ...serviceChecklistItems], [orderChecklistItems, serviceChecklistItems])
 
+  const configuredMaterials = useMemo(() => {
+    const aggregated = new Map<string, { id: string; name: string; price: number; quantity: number; category?: string }>()
+
+    for (const item of checklistItems) {
+      for (const material of (item.materials || []) as Array<{ id?: string; name?: string; quantity?: number }>) {
+        const id = String(material.id || material.name || `${item.id}-material`)
+        const existing = aggregated.get(id)
+        const price = availableMaterials.find((entry) => String(entry.id) === String(material.id) || entry.name === material.name)?.price || 0
+        const quantity = Number(material.quantity ?? 1) || 1
+
+        if (existing) {
+          existing.quantity += quantity
+          existing.price = existing.price || price
+        } else {
+          aggregated.set(id, {
+            id,
+            name: String(material.name || material.id || 'Material sin nombre'),
+            price,
+            quantity,
+            category: 'Checklist',
+          })
+        }
+      }
+    }
+
+    return Array.from(aggregated.values())
+  }, [availableMaterials, checklistItems])
+
   useEffect(() => {
     setChecked(Array.isArray(checklistItems) ? checklistItems.map(() => false) : [])
   }, [checklistItems.length])
@@ -644,8 +951,8 @@ function OrderDetail({ order, onClose }: { order: WorkOrder; onClose: () => void
   const orderChecklistEntries = orderChecklistItems
   const serviceChecklistEntries = serviceChecklistItems
   const checklist = checklistItems
-  const visibleStatuses = statusOrder.filter((value): value is Exclude<typeof statusOrder[number], 'rechazado' | 'en revision'> => value !== 'rechazado' && value !== 'en revision')
-  const statusIdx = visibleStatuses.indexOf(status as typeof visibleStatuses[number])
+  const visibleStatuses = ['pendiente', 'en camino', 'en proceso', 'finalizado'] as const
+  const statusIdx = visibleStatuses.indexOf(normalizeTechnicianStatus(status) === 'finalizada' ? 'finalizado' : normalizeTechnicianStatus(status) as (typeof visibleStatuses)[number])
   const canFinish = Array.isArray(checked) && checked.every(Boolean) && signed
   const missingMaterialCategories = Array.from(new Set(availableMaterials.map((material) => material.category || 'Otros'))).sort()
   const normalizedMissingMaterialSearch = missingMaterialSearch.trim().toLowerCase()
@@ -656,16 +963,13 @@ function OrderDetail({ order, onClose }: { order: WorkOrder; onClose: () => void
   })
 
   const buildTechnicianFeedback = () => {
-    const materialsItems = Object.entries(usedMaterials).map(([materialId, qty]) => {
-      const material = availableMaterials.find((m) => m.id === materialId)
-      return {
-        materialId,
-        name: material?.name || materialId,
-        price: material?.price || 0,
-        quantity: qty,
-        subtotal: (material?.price || 0) * qty,
-      }
-    })
+    const materialsItems = configuredMaterials.map((material) => ({
+      materialId: material.id,
+      name: material.name,
+      price: material.price || 0,
+      quantity: material.quantity,
+      subtotal: (material.price || 0) * material.quantity,
+    }))
 
     const materialsTotal = materialsItems.reduce((sum, item) => sum + item.subtotal, 0)
     const technicianName = session?.user?.name ?? (activeJob as any)?.technician?.name ?? (order as any).tecnicoNombre ?? 'el técnico'
@@ -675,6 +979,7 @@ function OrderDetail({ order, onClose }: { order: WorkOrder; onClose: () => void
     const workEndAt = workEndAtTime ?? null
     const durationMs = workStartAt && workEndAt ? (new Date(workEndAt).getTime() - new Date(workStartAt).getTime()) : undefined
     const workDuration = durationMs !== undefined && durationMs >= 0 ? `${Math.floor(durationMs / 3600000)}h ${Math.floor((durationMs % 3600000) / 60000)}m` : undefined
+    const estimatedHours = typeof estimatedWorkHours === 'number' && estimatedWorkHours >= 0 ? estimatedWorkHours : undefined
 
     const checklistFeedbackItems = checklist.map((item, idx) => ({
       text: item.text || '',
@@ -712,23 +1017,24 @@ function OrderDetail({ order, onClose }: { order: WorkOrder; onClose: () => void
         afterUrls: afterPhotoUrls,
       },
       signature: signed,
+      estimatedHours,
     }
   }
 
   const handleStatusChange = async (s: ServiceStatus) => {
-    const nextStatus = s === 'finalizado' ? 'finalizado' : s
+    const nextStatus = s === 'finalizado' ? 'por_validar' : s
 
-    if (nextStatus === 'finalizado') {
+    if (nextStatus === 'por_validar') {
       if (!canFinish) {
         alert('Completa el checklist y captura la firma antes de finalizar.')
         return
       }
       try {
-        const result = await updateOrdenStatus(String((order as any).id), 'finalizado', {
+        const result = await updateOrdenStatus(String((order as any).id), 'por_validar', {
           feedback: JSON.stringify(buildTechnicianFeedback()),
         })
         if (result?.success) {
-          setStatus('finalizado')
+          setStatus('por_validar')
           setGenerated(true)
           if (!workEndAtTime) setWorkEndAtTime(new Date().toISOString())
         }
@@ -762,6 +1068,8 @@ function OrderDetail({ order, onClose }: { order: WorkOrder; onClose: () => void
     setIsRejecting(true)
     try {
       const technicianName = session?.user?.name ?? (activeJob as any)?.technician?.name ?? (order as any).tecnicoNombre ?? 'el técnico'
+      const estimatedHours = typeof estimatedWorkHours === 'number' && estimatedWorkHours >= 0 ? estimatedWorkHours : undefined
+
       const rejectionPayload = {
         type: 'rejection_report',
         technician: technicianName,
@@ -772,7 +1080,9 @@ function OrderDetail({ order, onClose }: { order: WorkOrder; onClose: () => void
         }),
         details: rejectionReason.trim(),
         timestamp: new Date().toISOString(),
+        estimatedHours,
       }
+      console.log('rejectionPayload', rejectionPayload)
       const result = await updateOrdenStatus(String((order as any).id), 'en revision', {
         feedback: JSON.stringify(rejectionPayload),
       })
@@ -795,11 +1105,11 @@ function OrderDetail({ order, onClose }: { order: WorkOrder; onClose: () => void
 
   const handleFinalize = async () => {
     try {
-      const result = await updateOrdenStatus(String((order as any).id), 'finalizado', {
+      const result = await updateOrdenStatus(String((order as any).id), 'por_validar', {
         feedback: JSON.stringify(buildTechnicianFeedback()),
       })
       if (result?.success) {
-        setStatus('finalizado')
+        setStatus('por_validar')
         setGenerated(true)
       }
     } catch (error) {
@@ -855,7 +1165,7 @@ function OrderDetail({ order, onClose }: { order: WorkOrder; onClose: () => void
           <button
             type="button"
             onClick={() => setShowRejectForm((prev) => !prev)}
-            disabled={status === 'en revision' || status === 'finalizado'}
+            disabled={status === 'en revision' || status === 'finalizado' || status === 'por_validar' || status === 'en_reclamo'}
             className="flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-2.5 text-sm font-semibold text-amber-700 transition-colors hover:border-amber-500/60 hover:bg-amber-500/15 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <ClipboardCheck className="size-4 shrink-0" />
@@ -891,6 +1201,18 @@ function OrderDetail({ order, onClose }: { order: WorkOrder; onClose: () => void
                   </label>
                 )
               })}
+            </div>
+            <div className="mt-4 rounded-2xl border border-border bg-background p-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Horas de trabajo estimadas</p>
+              <input
+                type="number"
+                min="0"
+                value={estimatedWorkHours}
+                onChange={(event) => setEstimatedWorkHours(event.target.value === '' ? '' : Number(event.target.value))}
+                placeholder="0"
+                className="mt-2 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground outline-none focus:border-primary/70 focus:ring-2 focus:ring-primary/10"
+              />
+              <p className="mt-2 text-xs text-muted-foreground">Ingresa las horas que estimas que tomará el trabajo.</p>
             </div>
             <div className="mt-4">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Materiales faltantes</p>
@@ -1004,20 +1326,23 @@ function OrderDetail({ order, onClose }: { order: WorkOrder; onClose: () => void
       <div className="rounded-2xl border border-border bg-card p-4">
         <p className="mb-2 text-sm font-semibold">Estado del trabajo</p>
         <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
-          {visibleStatuses.map((s, i) => (
-            <button
-              key={s}
-              onClick={async () => handleStatusChange(s)}
-              className={cn(
-                'rounded-lg py-2 text-[10px] font-medium leading-tight transition-colors',
-                i <= statusIdx
-                  ? 'bg-primary text-primary-foreground'
-                  : 'bg-secondary text-muted-foreground',
-              )}
-            >
-              {s}
-            </button>
-          ))}
+          {visibleStatuses.map((s, i) => {
+            const label = s === 'finalizado' ? 'Finalizada' : s === 'en camino' ? 'En camino' : s === 'en proceso' ? 'En proceso' : 'Pendiente'
+            return (
+              <button
+                key={s}
+                onClick={async () => handleStatusChange(s as ServiceStatus)}
+                className={cn(
+                  'rounded-lg py-2 text-[10px] font-medium leading-tight transition-colors',
+                  i <= statusIdx
+                    ? 'bg-primary text-primary-foreground'
+                    : 'bg-secondary text-muted-foreground',
+                )}
+              >
+                {label}
+              </button>
+            )
+          })}
         </div>
       </div>
 
@@ -1149,6 +1474,7 @@ function OrderDetail({ order, onClose }: { order: WorkOrder; onClose: () => void
       {section === 'materiales' && (
         <Materials
           availableMaterials={availableMaterials}
+          configuredMaterials={configuredMaterials}
           usedMaterials={usedMaterials}
           onUsedMaterialsChange={setUsedMaterials}
           description={materialsDescription}
@@ -1156,10 +1482,20 @@ function OrderDetail({ order, onClose }: { order: WorkOrder; onClose: () => void
         />
       )}
 
+      {section === 'calculadora' && (
+        <CircuitCalculator
+          onUseSummary={(summary) => {
+            setMaterialsDescription((prev) => `${prev}${prev ? '\n' : ''}${summary}`).trim()
+          }}
+        />
+      )}
+
       {section === 'evidence' && (
         <EvidenceSection
           order={order}
           serviceTemplates={serviceChecklistEntries}
+          beforePhotoUrls={beforePhotoUrls}
+          afterPhotoUrls={afterPhotoUrls}
           onSave={async (evidence) => {
             const result = await saveOrdenEvidence(String((order as any).id), evidence)
             if (!result.success) {
@@ -1214,37 +1550,60 @@ function OrderDetail({ order, onClose }: { order: WorkOrder; onClose: () => void
 function EvidenceSection({
   order,
   serviceTemplates,
+  beforePhotoUrls,
+  afterPhotoUrls,
   onSave,
 }: {
   order: WorkOrder
   serviceTemplates: Array<{ id: string; text: string; required?: boolean; materials?: any[]; evidence?: any }>
+  beforePhotoUrls: string[]
+  afterPhotoUrls: string[]
   onSave: (evidence: Record<string, any>) => Promise<void>
 }) {
   const evidenceData = parseEvidence((order as any).technicalEvidence) || {}
   const [saving, setSaving] = useState(false)
 
   const [localEvidence, setLocalEvidence] = useState<Record<string, any>>(() => {
-    // Initialize per-template evidence from existing order data
     const initial: Record<string, any> = {}
     if (serviceTemplates && serviceTemplates.length) {
       for (const t of serviceTemplates) {
-        initial[String(t.id)] = evidenceData[String(t.id)] ?? { voltage: '', current: '', earthResistance: '', continuity: '', observations: '' }
+        initial[String(t.id)] = evidenceData[String(t.id)] ?? {
+          voltage: '',
+          current: '',
+          earthResistance: '',
+          continuity: '',
+          observations: '',
+          evidenceRequirements: {
+            photosBefore: Boolean(t.evidence?.photosBefore),
+            photosAfter: Boolean(t.evidence?.photosAfter),
+            measurements: Boolean(t.evidence?.measurements),
+          },
+        }
       }
     } else {
-      // legacy single-object shape
       initial['legacy'] = evidenceData || { voltage: '', current: '', earthResistance: '', continuity: '', observations: '' }
     }
     return initial
   })
 
   useEffect(() => {
-    // update when order changes
     const parsed = parseEvidence((order as any).technicalEvidence) || {}
     setLocalEvidence((prev) => {
       const next: Record<string, any> = { ...prev }
       if (serviceTemplates && serviceTemplates.length) {
         for (const t of serviceTemplates) {
-          next[String(t.id)] = parsed[String(t.id)] ?? prev[String(t.id)] ?? { voltage: '', current: '', earthResistance: '', continuity: '', observations: '' }
+          next[String(t.id)] = parsed[String(t.id)] ?? prev[String(t.id)] ?? {
+            voltage: '',
+            current: '',
+            earthResistance: '',
+            continuity: '',
+            observations: '',
+            evidenceRequirements: {
+              photosBefore: Boolean(t.evidence?.photosBefore),
+              photosAfter: Boolean(t.evidence?.photosAfter),
+              measurements: Boolean(t.evidence?.measurements),
+            },
+          }
         }
       } else {
         next['legacy'] = parsed || prev['legacy'] || { voltage: '', current: '', earthResistance: '', continuity: '', observations: '' }
@@ -1260,8 +1619,20 @@ function EvidenceSection({
   const handleSave = async () => {
     setSaving(true)
     try {
-      // compact localEvidence: if only legacy, save as legacy object, else save as map by template id
-      const payload = serviceTemplates && serviceTemplates.length ? localEvidence : (localEvidence['legacy'] || {})
+      const payload = serviceTemplates && serviceTemplates.length
+        ? Object.fromEntries(serviceTemplates.map((template) => {
+            const templateId = String(template.id)
+            const currentValue = localEvidence[templateId] || {}
+            return [templateId, {
+              ...currentValue,
+              evidenceRequirements: {
+                photosBefore: Boolean(template.evidence?.photosBefore),
+                photosAfter: Boolean(template.evidence?.photosAfter),
+                measurements: Boolean(template.evidence?.measurements),
+              },
+            }]
+          }))
+        : (localEvidence['legacy'] || {})
       await onSave(payload)
       alert('Evidencia técnica guardada correctamente')
     } finally {
@@ -1275,29 +1646,86 @@ function EvidenceSection({
         <div className="space-y-4">
           {serviceTemplates.map((t) => {
             const id = String(t.id)
-            const e = localEvidence[id] || { voltage: '', current: '', earthResistance: '', continuity: '', observations: '' }
+            const e = localEvidence[id] || {
+              voltage: '',
+              current: '',
+              earthResistance: '',
+              continuity: '',
+              observations: '',
+              evidenceRequirements: {
+                photosBefore: Boolean(t.evidence?.photosBefore),
+                photosAfter: Boolean(t.evidence?.photosAfter),
+                measurements: Boolean(t.evidence?.measurements),
+              },
+            }
+            const requiresPhotosBefore = Boolean(t.evidence?.photosBefore)
+            const requiresPhotosAfter = Boolean(t.evidence?.photosAfter)
+            const requiresMeasurements = Boolean(t.evidence?.measurements)
+            const shouldShowMeasurements = requiresMeasurements || (!requiresPhotosBefore && !requiresPhotosAfter)
+
             return (
               <div key={id} className="rounded-2xl border border-border bg-card p-3">
-                <p className="text-sm font-semibold">{t.text || 'Evidencia'}</p>
-                <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                  <label className="space-y-2 rounded-2xl border border-border bg-card p-3">
-                    <span className="text-xs font-semibold text-muted-foreground">Voltaje</span>
-                    <input value={e.voltage || ''} onChange={(ev) => handleChange(id, 'voltage', ev.target.value)} placeholder="Ej: 230 V" className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary/50" />
-                  </label>
-                  <label className="space-y-2 rounded-2xl border border-border bg-card p-3">
-                    <span className="text-xs font-semibold text-muted-foreground">Corriente</span>
-                    <input value={e.current || ''} onChange={(ev) => handleChange(id, 'current', ev.target.value)} placeholder="Ej: 10 A" className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary/50" />
-                  </label>
-                  <label className="space-y-2 rounded-2xl border border-border bg-card p-3">
-                    <span className="text-xs font-semibold text-muted-foreground">Resistencia de tierra</span>
-                    <input value={e.earthResistance || ''} onChange={(ev) => handleChange(id, 'earthResistance', ev.target.value)} placeholder="Ej: 0.5 Ω" className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary/50" />
-                  </label>
-                  <label className="space-y-2 rounded-2xl border border-border bg-card p-3">
-                    <span className="text-xs font-semibold text-muted-foreground">Continuidad</span>
-                    <input value={e.continuity || ''} onChange={(ev) => handleChange(id, 'continuity', ev.target.value)} placeholder="Ej: OK / fallida" className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary/50" />
-                  </label>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-sm font-semibold">{t.text || 'Evidencia'}</p>
+                  <span className="rounded-full border border-border bg-background px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
+                    {requiresPhotosBefore || requiresPhotosAfter || requiresMeasurements
+                      ? 'Requisitos configurados'
+                      : 'Sin requisitos extra'}
+                  </span>
                 </div>
-                <label className="space-y-2 rounded-2xl border border-border bg-card p-3 mt-3">
+
+                {(requiresPhotosBefore || requiresPhotosAfter || requiresMeasurements) && (
+                  <div className="mt-3 rounded-2xl border border-border bg-background/70 p-3 text-xs text-muted-foreground">
+                    <p className="font-medium text-foreground">Requisitos del checklist</p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {requiresPhotosBefore && <span className="rounded-full bg-primary/10 px-2.5 py-1 text-[11px] text-primary">Fotos antes</span>}
+                      {requiresPhotosAfter && <span className="rounded-full bg-primary/10 px-2.5 py-1 text-[11px] text-primary">Fotos después</span>}
+                      {requiresMeasurements && <span className="rounded-full bg-primary/10 px-2.5 py-1 text-[11px] text-primary">Mediciones</span>}
+                    </div>
+                  </div>
+                )}
+
+                {shouldShowMeasurements && (
+                  <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                    <label className="space-y-2 rounded-2xl border border-border bg-card p-3">
+                      <span className="text-xs font-semibold text-muted-foreground">Voltaje</span>
+                      <input value={e.voltage || ''} onChange={(ev) => handleChange(id, 'voltage', ev.target.value)} placeholder="Ej: 230 V" className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary/50" />
+                    </label>
+                    <label className="space-y-2 rounded-2xl border border-border bg-card p-3">
+                      <span className="text-xs font-semibold text-muted-foreground">Corriente</span>
+                      <input value={e.current || ''} onChange={(ev) => handleChange(id, 'current', ev.target.value)} placeholder="Ej: 10 A" className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary/50" />
+                    </label>
+                    <label className="space-y-2 rounded-2xl border border-border bg-card p-3">
+                      <span className="text-xs font-semibold text-muted-foreground">Resistencia de tierra</span>
+                      <input value={e.earthResistance || ''} onChange={(ev) => handleChange(id, 'earthResistance', ev.target.value)} placeholder="Ej: 0.5 Ω" className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary/50" />
+                    </label>
+                    <label className="space-y-2 rounded-2xl border border-border bg-card p-3">
+                      <span className="text-xs font-semibold text-muted-foreground">Continuidad</span>
+                      <input value={e.continuity || ''} onChange={(ev) => handleChange(id, 'continuity', ev.target.value)} placeholder="Ej: OK / fallida" className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary/50" />
+                    </label>
+                  </div>
+                )}
+
+                {(requiresPhotosBefore || requiresPhotosAfter) && (
+                  <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                    {requiresPhotosBefore && (
+                      <div className="rounded-2xl border border-border bg-background p-3">
+                        <p className="text-xs font-semibold text-muted-foreground">Fotos antes</p>
+                        <p className="mt-2 text-sm text-muted-foreground">Se espera evidencia visual previa. Estas fotos se cargan en la sección de fotos del técnico.</p>
+                        <p className="mt-2 text-xs text-muted-foreground">{beforePhotoUrls.length} foto{beforePhotoUrls.length === 1 ? '' : 's'} registradas</p>
+                      </div>
+                    )}
+                    {requiresPhotosAfter && (
+                      <div className="rounded-2xl border border-border bg-background p-3">
+                        <p className="text-xs font-semibold text-muted-foreground">Fotos después</p>
+                        <p className="mt-2 text-sm text-muted-foreground">Se espera evidencia visual final. Estas fotos se cargan en la sección de fotos del técnico.</p>
+                        <p className="mt-2 text-xs text-muted-foreground">{afterPhotoUrls.length} foto{afterPhotoUrls.length === 1 ? '' : 's'} registradas</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                <label className="mt-3 space-y-2 rounded-2xl border border-border bg-card p-3">
                   <span className="text-xs font-semibold text-muted-foreground">Observaciones</span>
                   <textarea value={e.observations || ''} onChange={(ev) => handleChange(id, 'observations', ev.target.value)} rows={3} className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary/50" />
                 </label>
@@ -1306,7 +1734,6 @@ function EvidenceSection({
           })}
         </div>
       ) : (
-        // legacy single evidence form
         <div className="space-y-4">
           <LegacyEvidenceForm evidence={localEvidence['legacy'] || {}} onChange={(next) => setLocalEvidence({ legacy: next })} />
         </div>
@@ -1441,70 +1868,48 @@ type Material = { id: string; name: string; price: number; stock?: number; categ
 
 interface MaterialsProps {
   availableMaterials: Array<Material>;
+  configuredMaterials?: Array<Material & { quantity?: number }>;
   usedMaterials: { [key: string]: number };
   onUsedMaterialsChange: (materials: { [key: string]: number }) => void;
   description?: string;
   onDescriptionChange?: (description: string) => void;
 }
 
-function Materials({ availableMaterials, usedMaterials, onUsedMaterialsChange, description = '', onDescriptionChange }: MaterialsProps) {
-  const [showDropdown, setShowDropdown] = useState(false)
-  const [materialSearch, setMaterialSearch] = useState('')
-  const [materialCategory, setMaterialCategory] = useState('Todos')
+function Materials({ availableMaterials, configuredMaterials = [], usedMaterials, onUsedMaterialsChange, description = '', onDescriptionChange }: MaterialsProps) {
+  const materials: Material[] = configuredMaterials.length > 0
+    ? configuredMaterials.map((material) => ({
+        id: material.id,
+        name: material.name,
+        price: material.price,
+        category: material.category || 'Checklist',
+      }))
+    : availableMaterials.length > 0
+      ? availableMaterials
+      : materialCatalog.map((m) => ({
+          id: m.name,
+          name: m.name,
+          price: m.price,
+          category: 'Otros',
+        }))
 
-  const materials: Material[] = availableMaterials.length > 0 ? availableMaterials : materialCatalog.map((m) => ({
-    id: m.name,
-    name: m.name,
-    price: m.price,
-    category: 'Otros',
-  }))
-
-  // Calculate total from used materials
-  const total = Object.entries(usedMaterials).reduce((sum, [materialId, qty]) => {
-    const material = materials.find(m => m.id === materialId)
-    return sum + (material?.price || 0) * qty
+  const total = materials.reduce((sum, material) => {
+    const configured = configuredMaterials.find((entry) => entry.id === material.id)
+    const qty = configured?.quantity ?? 1
+    return sum + (material.price || 0) * qty
   }, 0)
 
-  const addMaterial = (materialId: string) => {
-    onUsedMaterialsChange({
-      ...usedMaterials,
-      [materialId]: (usedMaterials[materialId] || 0) + 1
-    })
-  }
-
-  const removeMaterial = (materialId: string) => {
-    const newMaterials = { ...usedMaterials }
-    if (newMaterials[materialId] > 1) {
-      newMaterials[materialId]--
-    } else {
-      delete newMaterials[materialId]
-    }
-    onUsedMaterialsChange(newMaterials)
-  }
-
-  const updateQuantity = (materialId: string, newQty: number) => {
-    const newMaterials = { ...usedMaterials }
-    if (newQty > 0) {
-      newMaterials[materialId] = newQty
-    } else {
-      delete newMaterials[materialId]
-    }
-    onUsedMaterialsChange(newMaterials)
-  }
-
-  const groupedMaterials = materials.reduce<Record<string, typeof materials>>((groups, material) => {
-    const category = material.category || 'Otros'
-    groups[category] = groups[category] || []
-    groups[category].push(material)
-    return groups
-  }, {})
-  const materialCategories = Object.keys(groupedMaterials).sort()
-  const normalizedSearch = materialSearch.trim().toLowerCase()
-  const filteredMaterials = materials.filter((material) => {
-    const matchesCategory = materialCategory === 'Todos' || (material.category || 'Otros') === materialCategory
-    const searchableText = `${material.name} ${material.id} ${material.category || ''}`.toLowerCase()
-    return matchesCategory && (!normalizedSearch || searchableText.includes(normalizedSearch))
-  })
+  const materialList = configuredMaterials.length > 0
+    ? configuredMaterials.map((material) => ({
+        ...material,
+        quantity: Number(material.quantity ?? 1),
+      }))
+    : materials.map((material) => ({
+        id: material.id,
+        name: material.name,
+        price: material.price,
+        category: material.category || 'Checklist',
+        quantity: 1,
+      }))
 
   return (
     <div className="space-y-3">
@@ -1519,115 +1924,43 @@ function Materials({ availableMaterials, usedMaterials, onUsedMaterialsChange, d
         />
       </div>
 
-      <div className="relative">
-        <button
-          onClick={() => setShowDropdown(!showDropdown)}
-          className="w-full rounded-xl border border-border bg-card p-3 text-left text-sm font-medium flex items-center justify-between hover:bg-secondary/50"
-        >
-          Agregar material
-          <Plus className="size-4" />
-        </button>
+      <div className="rounded-2xl border border-border bg-background/80 p-4">
+        <div className="flex items-center justify-between gap-2">
+          <div>
+            <p className="text-sm font-semibold">Materiales del checklist</p>
+            <p className="mt-1 text-xs text-muted-foreground">Estos materiales vienen desde la configuración del admin y no se editan desde la orden.</p>
+          </div>
+          <span className="rounded-full bg-primary/10 px-2.5 py-1 text-[11px] font-semibold text-primary">Solo lectura</span>
+        </div>
 
-        {showDropdown && (
-          <div className="absolute left-0 right-0 top-full z-50 mt-1 overflow-hidden rounded-xl border border-border bg-card shadow-lg">
-            <div className="border-b border-border bg-card p-2">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                <input
-                  autoFocus
-                  value={materialSearch}
-                  onChange={(event) => setMaterialSearch(event.target.value)}
-                  placeholder="Buscar por nombre o código..."
-                  className="h-9 w-full rounded-lg border border-border bg-background pl-9 pr-3 text-sm outline-none focus:border-primary"
-                />
+        {materialList.length > 0 ? (
+          <div className="mt-4 space-y-2">
+            {materialList.map((material) => (
+              <div key={material.id} className="flex items-center justify-between rounded-xl border border-border bg-card px-3 py-2.5">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium">{material.name}</p>
+                  <p className="text-xs text-muted-foreground">{material.category || 'Checklist'} · {formatCLP(material.price || 0)} c/u</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-sm font-semibold">x{material.quantity}</p>
+                  <p className="text-xs text-muted-foreground">{formatCLP((material.price || 0) * material.quantity)}</p>
+                </div>
               </div>
-              <div className="mt-2 flex gap-1.5 overflow-x-auto pb-1">
-                {['Todos', ...materialCategories].map((category) => (
-                  <button
-                    key={category}
-                    type="button"
-                    onClick={() => setMaterialCategory(category)}
-                    className={cn(
-                      'shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold',
-                      materialCategory === category ? 'bg-primary text-primary-foreground' : 'bg-secondary text-muted-foreground',
-                    )}
-                  >
-                    {category}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div className="max-h-64 overflow-y-auto">
-              {filteredMaterials.length > 0 ? filteredMaterials.map((material) => (
-                <button key={material.id} onClick={() => addMaterial(material.id)} className="w-full border-b border-border px-3 py-2.5 text-left text-sm transition hover:bg-secondary/50 last:border-b-0">
-                  <div className="flex items-center gap-3">
-                    <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary"><Plus className="size-3.5" /></span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate font-medium">{material.name}</span>
-                      <span className="block text-[11px] text-muted-foreground">{material.category || 'Otros'} · {formatCLP(material.price)}</span>
-                    </span>
-                  </div>
-                </button>
-              )) : (
-                <p className="px-3 py-6 text-center text-sm text-muted-foreground">No hay materiales que coincidan.</p>
-              )}
-            </div>
-            <div className="border-t border-border bg-secondary/40 px-3 py-2 text-center text-[11px] text-muted-foreground">
-              Puedes seleccionar varios materiales sin cerrar este buscador.
-            </div>
+            ))}
+          </div>
+        ) : (
+          <div className="mt-4 rounded-2xl border border-dashed border-border bg-secondary/30 p-4 text-center text-sm text-muted-foreground">
+            No hay materiales configurados para este checklist.
           </div>
         )}
       </div>
 
-      {Object.keys(usedMaterials).length > 0 ? (
-        <>
-          {Object.entries(usedMaterials).map(([materialId, qty]) => {
-            const material = materials.find(m => m.id === materialId)
-            if (!material) return null
-            return (
-              <div key={materialId} className="flex items-center gap-3 rounded-xl border border-border bg-card p-3">
-                <Package className="size-4 text-primary" />
-                <div className="flex-1">
-                  <p className="text-sm font-medium">{material.name}</p>
-                  <p className="text-xs text-muted-foreground">{formatCLP(material.price)} c/u</p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => updateQuantity(materialId, qty - 1)}
-                    className="rounded-full bg-secondary px-2 text-sm hover:bg-secondary/80"
-                  >
-                    -
-                  </button>
-                  <span className="mx-2 w-6 text-center">{qty}</span>
-                  <button
-                    onClick={() => updateQuantity(materialId, qty + 1)}
-                    className="rounded-full bg-secondary px-2 text-sm hover:bg-secondary/80"
-                  >
-                    +
-                  </button>
-                  <button
-                    onClick={() => removeMaterial(materialId)}
-                    className="ml-2 rounded-full bg-red-500/20 px-2 text-xs text-red-600 hover:bg-red-500/30"
-                  >
-                    ✕
-                  </button>
-                </div>
-              </div>
-            )
-          })}
-
-          <div className="rounded-2xl border border-border bg-card p-3">
-            <div className="flex items-center justify-between">
-              <p className="text-sm font-medium">Total</p>
-              <p className="font-display font-bold">{formatCLP(total)}</p>
-            </div>
-          </div>
-        </>
-      ) : (
-        <div className="rounded-2xl border border-dashed border-border bg-secondary/30 p-4 text-center">
-          <p className="text-sm text-muted-foreground">No hay materiales agregados</p>
+      <div className="rounded-2xl border border-border bg-card p-3">
+        <div className="flex items-center justify-between">
+          <p className="text-sm font-medium">Total de materiales del checklist</p>
+          <p className="font-display font-bold">{formatCLP(total)}</p>
         </div>
-      )}
+      </div>
     </div>
   )
 }

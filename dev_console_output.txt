@@ -9,7 +9,7 @@
 ✓ Ready in 1160ms
 ⚠ Slow filesystem detected. The benchmark took 394ms. If D:\DESCARGAS HDD\code zero\.next/dev is a network drive, consider moving it to a local folder.
 See more: https://nextjs.org/docs/app/guides/local-development
-⚠ The "middleware" file convention is deprecated. Please use "proxy" instead. Learn more: https://nextjs.org/docs/messages/middleware-to-proxy
+⚠ The "proxy.ts" file convention is deprecated. Please use "proxy" instead. Learn more: https://nextjs.org/docs/messages/proxy.ts-to-proxy
 
  GET / 200 in 1008ms (next.js: 326ms, application-code: 682ms)
 (node:6244) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
@@ -281,3 +281,10 @@ See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode de
  GET /admin 200 in 1526ms (next.js: 5ms, proxy.ts: 3ms, application-code: 1518ms)
  GET /admin 200 in 2.1s (next.js: 5ms, proxy.ts: 5ms, application-code: 2.1s)
  GET /admin 200 in 6.2s (next.js: 44ms, proxy.ts: 15ms, application-code: 6.1s)
+ GET /admin 200 in 1491ms (next.js: 4ms, proxy.ts: 3ms, application-code: 1483ms)
+ GET /admin 200 in 5.6s (next.js: 4ms, proxy.ts: 7ms, application-code: 5.6s)
+ GET /admin 200 in 1123ms (next.js: 5ms, proxy.ts: 5ms, application-code: 1114ms)
+ GET /admin 200 in 5.7s (next.js: 6ms, proxy.ts: 4ms, application-code: 5.7s)
+ GET /admin 200 in 1280ms (next.js: 6ms, proxy.ts: 3ms, application-code: 1270ms)
+ GET /admin 200 in 6.7s (next.js: 4ms, proxy.ts: 4ms, application-code: 6.7s)
+ GET /admin 200 in 1736ms (next.js: 5ms, proxy.ts: 3ms, application-code: 1728ms)

@@ -60,9 +60,40 @@ function buildStatusNotificationMessages(ordenId: string, fromStatus: string, to
     case 'en proceso':
       clienteMessages.push({ role: 'cliente', title: 'Su técnico fue asignado.', message: `Se asignó un técnico para su solicitud ${idLabel}.`, timestamp })
       break
+    case 'cotizando':
+      adminMessages.push({ role: 'admin', title: 'Cotización en preparación.', message: `La orden ${idLabel} está en preparación de cotización.`, timestamp })
+      break
+    case 'cotizado':
+      clienteMessages.push({ role: 'cliente', title: 'Solicitud cotizada.', message: `Su solicitud ${idLabel} ahora está en estado cotizado.`, timestamp })
+      adminMessages.push({ role: 'admin', title: 'Orden cotizada.', message: `La orden ${idLabel} se movió a cotizado.`, timestamp })
+      break
+    case 'recotizando':
+      clienteMessages.push({ role: 'cliente', title: 'Recotización solicitada.', message: `Se solicitó una recotización para su solicitud ${idLabel}.`, timestamp })
+      adminMessages.push({ role: 'admin', title: 'Recotización requerida.', message: `Se solicitó una recotización para la orden ${idLabel}.`, timestamp })
+      break
+    case 'aceptada':
+      clienteMessages.push({ role: 'cliente', title: 'Cotización aceptada.', message: `Su solicitud ${idLabel} fue aceptada y está lista para pago.`, timestamp })
+      adminMessages.push({ role: 'admin', title: 'Cotización aceptada.', message: `La cotización de la orden ${idLabel} fue aceptada.`, timestamp })
+      break
+    case 'pendiente_pago':
+      clienteMessages.push({ role: 'cliente', title: 'Pago pendiente.', message: `La orden ${idLabel} está pendiente de pago.`, timestamp })
+      adminMessages.push({ role: 'admin', title: 'Pago pendiente.', message: `La orden ${idLabel} está pendiente de pago.`, timestamp })
+      break
+    case 'pagada':
+      clienteMessages.push({ role: 'cliente', title: 'Pago recibido.', message: `El pago de la orden ${idLabel} fue recibido.`, timestamp })
+      adminMessages.push({ role: 'admin', title: 'Pago recibido.', message: `Se registró el pago de la orden ${idLabel}.`, timestamp })
+      break
+    case 'por_validar':
+      clienteMessages.push({ role: 'cliente', title: 'Servicio reportado como terminado.', message: `El técnico reportó que la orden ${idLabel} quedó terminada; ahora debes revisarla y confirmarla.`, timestamp })
+      adminMessages.push({ role: 'admin', title: 'Validación pendiente.', message: `La orden ${idLabel} quedó en espera de validación del cliente.`, timestamp })
+      break
     case 'finalizado':
-      clienteMessages.push({ role: 'cliente', title: 'Trabajo finalizado.', message: `El trabajo de su solicitud ${idLabel} fue finalizado.`, timestamp })
-      adminMessages.push({ role: 'admin', title: 'Trabajo terminado.', message: `La orden ${idLabel} fue finalizada.`, timestamp })
+      clienteMessages.push({ role: 'cliente', title: 'Trabajo finalizado.', message: `El trabajo de su solicitud ${idLabel} fue aprobado y cerrado.`, timestamp })
+      adminMessages.push({ role: 'admin', title: 'Trabajo terminado.', message: `La orden ${idLabel} fue finalizada y validada por el cliente.`, timestamp })
+      break
+    case 'en_reclamo':
+      clienteMessages.push({ role: 'cliente', title: 'Reclamo recibido.', message: `Se registró un reclamo para la orden ${idLabel}; un administrador lo revisará pronto.`, timestamp })
+      adminMessages.push({ role: 'admin', title: 'Reclamo pendiente.', message: `La orden ${idLabel} pasó a reclamo y requiere revisión.`, timestamp })
       break
     case 'rechazado':
       clienteMessages.push({ role: 'cliente', title: 'Solicitud rechazada.', message: `Su solicitud ${idLabel} fue rechazada.`, timestamp })
@@ -72,12 +103,12 @@ function buildStatusNotificationMessages(ordenId: string, fromStatus: string, to
       clienteMessages.push({ role: 'cliente', title: 'Solicitud en revisión.', message: `Su solicitud ${idLabel} fue enviada a revisión para evaluación adicional.`, timestamp })
       adminMessages.push({ role: 'admin', title: 'Orden en revisión.', message: `La orden ${idLabel} quedó en revisión para evaluar su continuación o cotización extra.`, timestamp })
       break
+    case 'anulada':
+      clienteMessages.push({ role: 'cliente', title: 'Orden anulada.', message: `Su solicitud ${idLabel} fue anulada.`, timestamp })
+      adminMessages.push({ role: 'admin', title: 'Orden anulada.', message: `La orden ${idLabel} fue anulada.`, timestamp })
+      break
     default:
       break
-  }
-
-  if (fromStatus.toLowerCase() === 'pendiente' && toStatus.toLowerCase() === 'en proceso') {
-    clienteMessages.push({ role: 'cliente', title: 'Su técnico fue asignado.', message: `Se asignó un técnico para su solicitud ${idLabel}.`, timestamp })
   }
 
   return [...clienteMessages, ...adminMessages]
@@ -214,7 +245,7 @@ async function countActiveOrdersForSlot(localDate: string, localTime: string) {
 
 export async function updateOrdenStatus(
   ordenId: string,
-  nuevoEstado: 'pendiente' | 'en camino' | 'en progreso' | 'en proceso' | 'finalizado' | 'rechazado' | 'en revision',
+  nuevoEstado: 'pendiente' | 'en camino' | 'en proceso' | 'en revision' | 'cotizando' | 'cotizado' | 'recotizando' | 'aceptada' | 'pendiente_pago' | 'pagada' | 'rechazado' | 'por_validar' | 'finalizado' | 'en_reclamo' | 'anulada',
   options?: { feedback?: string; resetAssignment?: boolean; technicalEvidence?: string | object; appendHistory?: { title: string; details?: string } }
 ) {
   try {
@@ -287,12 +318,47 @@ export async function updateOrdenStatus(
               updateValues.workStartAt = new Date()
             }
             break
+          case 'cotizando':
+            historyTitle = historyTitle ?? 'Cotización en preparación'
+            historyDetails = historyDetails ?? options?.feedback ?? 'La orden se encuentra en preparación de cotización.'
+            break
+          case 'cotizado':
+            historyTitle = historyTitle ?? 'Cotización enviada'
+            historyDetails = historyDetails ?? options?.feedback ?? 'La cotización fue enviada al cliente.'
+            break
+          case 'recotizando':
+            historyTitle = historyTitle ?? 'Recotización solicitada'
+            historyDetails = historyDetails ?? options?.feedback ?? 'El cliente solicitó ajustes a la cotización.'
+            break
+          case 'aceptada':
+            historyTitle = historyTitle ?? 'Cotización aceptada'
+            historyDetails = historyDetails ?? options?.feedback ?? 'El cliente aceptó la cotización y está listo para pagar.'
+            break
+          case 'pendiente_pago':
+            historyTitle = historyTitle ?? 'Pago pendiente'
+            historyDetails = historyDetails ?? options?.feedback ?? 'La orden está pendiente de pago.'
+            break
+          case 'pagada':
+            historyTitle = historyTitle ?? 'Pago recibido'
+            historyDetails = historyDetails ?? options?.feedback ?? 'El pago fue procesado con éxito.'
+            break
+          case 'por_validar':
+            historyTitle = historyTitle ?? 'Esperando validación del cliente'
+            historyDetails = historyDetails ?? `Estado actualizado de ${existingEstado} a ${newEstado}`
+            if (!existingOrden.workEndAt) {
+              updateValues.workEndAt = new Date()
+            }
+            break
           case 'finalizado':
             historyTitle = historyTitle ?? 'Trabajo finalizado'
             historyDetails = historyDetails ?? `Estado actualizado de ${existingEstado} a ${newEstado}`
             if (!existingOrden.workEndAt) {
               updateValues.workEndAt = new Date()
             }
+            break
+          case 'en_reclamo':
+            historyTitle = historyTitle ?? 'Reclamo abierto'
+            historyDetails = historyDetails ?? `Estado actualizado de ${existingEstado} a ${newEstado}`
             break
           case 'rechazado':
             historyTitle = historyTitle ?? 'Orden rechazada'
@@ -302,6 +368,10 @@ export async function updateOrdenStatus(
             historyTitle = historyTitle ?? 'Orden en revisión'
             historyDetails = historyDetails ?? options?.feedback ?? 'La orden fue enviada a revisión'
             break
+          case 'anulada':
+            historyTitle = historyTitle ?? 'Orden anulada'
+            historyDetails = historyDetails ?? options?.feedback ?? 'La orden fue anulada definitivamente.'
+            break
           case 'pendiente':
             historyTitle = historyTitle ?? 'Orden actualizada a pendiente'
             historyDetails = historyDetails ?? `Estado actualizado de ${existingEstado} a pendiente`
@@ -309,14 +379,14 @@ export async function updateOrdenStatus(
         }
 
         const safeHistorial: string = String(existingOrden.historial ?? '')
-        const historial = appendHistorial(safeHistorial, historyTitle, historyDetails)
+        const historial = appendHistorial(safeHistorial, historyTitle ?? '', historyDetails)
         const notificationMessages = buildStatusNotificationMessages(String(existingOrden.id), String(existingOrden.estado ?? ''), String(nuevoEstado))
         updateValues.historial = appendNotificationMessages(historial, notificationMessages)
       }
 
       if (!statusChanged && options?.appendHistory) {
         const safeHistorial: string = String(existingOrden.historial ?? '')
-        const historial = appendHistorial(safeHistorial, options.appendHistory.title, options.appendHistory.details)
+        const historial = appendHistorial(safeHistorial, options.appendHistory.title ?? '', options.appendHistory.details)
         updateValues.historial = historial
       }
     }

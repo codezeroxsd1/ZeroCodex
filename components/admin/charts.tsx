@@ -94,6 +94,36 @@ function isPaidOrder(order: any) {
   )
 }
 
+export function getStatusBucket(status: string) {
+  const normalized = String(status || '').toLowerCase().trim()
+
+  if (['cotizando', 'cotizado', 'recotizando', 'por revisar', 'por_revisar', 'en revisión', 'en revision'].includes(normalized)) {
+    return 'Cotización'
+  }
+
+  if (['pendiente', 'en camino', 'en proceso', 'aceptada', 'en progreso'].includes(normalized)) {
+    return 'En curso'
+  }
+
+  if (['pendiente_pago', 'pendiente pago', 'por pagar', 'sin pagar'].includes(normalized)) {
+    return 'Pendiente de pago'
+  }
+
+  if (['por_validar', 'validación', 'validacion', 'en_reclamo', 'reclamo'].includes(normalized)) {
+    return 'Validación / reclamo'
+  }
+
+  if (['finalizado', 'pagada', 'pagado', 'completado', 'cerrado'].includes(normalized)) {
+    return 'Cerradas'
+  }
+
+  if (['rechazado', 'cancelada', 'anulada'].includes(normalized)) {
+    return 'Canceladas'
+  }
+
+  return 'Otros'
+}
+
 export function RevenueChart({ orders = [], quotes = [] }: { orders?: any[]; quotes?: any[] }) {
   const [view, setView] = useState<'monthly' | 'annual' | 'daily'>('daily')
 
@@ -227,18 +257,27 @@ export function SegmentsChart({ orders = [] }: { orders?: any[] }) {
   const segments = useMemo(() => {
     const totals: Record<string, number> = {}
     for (const o of orders) {
-      const status = String(o.estado || o.status || 'pendiente').toLowerCase()
-      const normalized =
-        status === 'finalizado' || status === 'pagada' || status === 'pagado' || status === 'completado'
-          ? 'Pagadas'
-          : status === 'rechazado' || status === 'cancelada'
-          ? 'Canceladas'
-          : 'Pendientes'
-      totals[normalized] = (totals[normalized] || 0) + 1
+      const bucket = getStatusBucket(String(o.estado || o.status || 'pendiente'))
+      totals[bucket] = (totals[bucket] || 0) + 1
     }
+
+    const orderedBuckets = ['Cotización', 'En curso', 'Pendiente de pago', 'Validación / reclamo', 'Cerradas', 'Canceladas', 'Otros']
+    const orderedSegments = orderedBuckets
+      .filter((bucket) => totals[bucket])
+      .map((bucket) => ({ name: bucket, count: totals[bucket] }))
+
+    const fallbackSegments = Object.keys(totals)
+      .filter((bucket) => !orderedBuckets.includes(bucket))
+      .map((bucket) => ({ name: bucket, count: totals[bucket] }))
+
     const sum = Object.values(totals).reduce((a, b) => a + b, 0) || 1
-    const colors = [green, blue, yellow]
-    return Object.keys(totals).map((k, i) => ({ name: k, value: Math.round((totals[k] / sum) * 100), count: totals[k], color: colors[i % colors.length] }))
+    const colors = [green, blue, yellow, gray, '#f59e0b', '#ef4444', '#8b5cf6']
+
+    return [...orderedSegments, ...fallbackSegments].map((segment, index) => ({
+      ...segment,
+      value: Math.round((segment.count / sum) * 100),
+      color: colors[index % colors.length],
+    }))
   }, [orders])
 
   return (

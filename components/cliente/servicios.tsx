@@ -19,7 +19,7 @@ export function ClienteServicios({ onSelectService }: { onSelectService: (id: st
           </div>
         ) : (
           <div className="mt-4 grid gap-3 lg:grid-cols-2">
-            {services.map((s) => (
+            {services.filter((s) => !s.hiddenFromClient).map((s) => (
               <button
                 key={s.id}
                 onClick={() => onSelectService(s.id)}

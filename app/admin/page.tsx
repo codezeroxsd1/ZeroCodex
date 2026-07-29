@@ -55,6 +55,7 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
       name: u.name || u.email || 'usuario',
       type: 'Cliente',
       createdAt: u.createdAt ? new Date(u.createdAt).toISOString() : undefined,
+      rating: 0,
     }))
 
   const technicians = users
@@ -96,6 +97,61 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
     }
   })
 
+  // compute average ratings for technicians and clients from order feedback
+  const parseMaybeJson = (value: any) => {
+    if (!value) return null
+    if (typeof value === 'object') return value
+    if (typeof value === 'string') {
+      try {
+        return JSON.parse(value)
+      } catch {
+        return null
+      }
+    }
+    return null
+  }
+
+  const techRatings: Record<string, { total: number; count: number }> = {}
+  const clientRatings: Record<string, { total: number; count: number }> = {}
+
+  for (const o of orders) {
+    const parsed = parseMaybeJson(o.notasTecnico ?? o.notastecnico ?? o.feedback ?? null)
+
+    // client's rating of the technician (submitted from client UI)
+    const clientGaveRating = parsed?.rating ?? (typeof parsed?.rating === 'number' ? parsed.rating : undefined)
+    // technician's rating of client (submitted from technician UI) usually stored as clientRating.score
+    const techGaveClientRating = parsed?.clientRating?.score ?? (typeof parsed?.clientRating === 'number' ? parsed.clientRating : undefined)
+
+    const techId = o.tecnicoId ?? o.tecnicoid ?? null
+    const clientId = o.clienteId ?? o.clienteid ?? o.cliente ?? null
+
+    if (techId && (clientGaveRating !== undefined && clientGaveRating !== null)) {
+      const key = String(techId)
+      techRatings[key] = techRatings[key] ?? { total: 0, count: 0 }
+      techRatings[key].total += Number(clientGaveRating) || 0
+      techRatings[key].count += 1
+    }
+
+    if (clientId && (techGaveClientRating !== undefined && techGaveClientRating !== null)) {
+      const key = String(clientId)
+      clientRatings[key] = clientRatings[key] ?? { total: 0, count: 0 }
+      clientRatings[key].total += Number(techGaveClientRating) || 0
+      clientRatings[key].count += 1
+    }
+  }
+
+  const techniciansWithRatings = technicians.map((t) => {
+    const agg = techRatings[String(t.id)]
+    const avg = agg && agg.count > 0 ? Math.round((agg.total / agg.count) * 10) / 10 : 0
+    return { ...t, rating: avg }
+  })
+
+  const clientsWithRatings = clients.map((c) => {
+    const agg = clientRatings[String(c.id)]
+    const avg = agg && agg.count > 0 ? Math.round((agg.total / agg.count) * 10) / 10 : 0
+    return { ...c, rating: avg }
+  })
+
   // If there's no dedicated quotes table, derive simple quote records from orders
   // This recovers the 'Cotizaciones' view when the backend/table isn't present.
   const quotes: any[] = (orders || [])
@@ -111,8 +167,8 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
 
 
   return <AdminPanel
-    clients={clients}
-    technicians={technicians}
+    clients={clientsWithRatings}
+    technicians={techniciansWithRatings}
     quotes={quotes}
     orders={workOrders}
     initialView={resolvedSearchParams.view === 'solicitudes' ? 'solicitudes' : undefined}

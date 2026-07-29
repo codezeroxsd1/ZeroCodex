@@ -1,0 +1,443 @@
+▲ Next.js 16.2.6 (Turbopack)
+- Local:         http://127.0.0.1:3000
+- Network:       http://127.0.0.1:3000
+- Environments: .env.local
+✓ Ready in 1227ms
+⚠ The "proxy.ts" file convention is deprecated. Please use "proxy" instead. Learn more: https://nextjs.org/docs/messages/middleware-to-proxy
+
+(node:20468) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+ GET /admin 200 in 16.2s (next.js: 635ms, proxy.ts: 116ms, application-code: 15.4s)
+ GET /api/auth/get-session 200 in 3.3s (next.js: 1950ms, application-code: 1372ms)
+ GET /admin 200 in 3.2s (next.js: 8ms, proxy.ts: 19ms, application-code: 3.2s)
+ GET /admin 200 in 1242ms (next.js: 8ms, proxy.ts: 5ms, application-code: 1230ms)
+ GET /admin 200 in 1222ms (next.js: 7ms, proxy.ts: 3ms, application-code: 1211ms)
+ GET /admin 200 in 1253ms (next.js: 9ms, proxy.ts: 8ms, application-code: 1236ms)
+ GET /admin 200 in 1222ms (next.js: 7ms, proxy.ts: 3ms, application-code: 1212ms)
+ GET /admin 200 in 1218ms (next.js: 8ms, proxy.ts: 4ms, application-code: 1206ms)
+ GET /admin 200 in 3.2s (next.js: 9ms, proxy.ts: 4ms, application-code: 3.2s)
+ GET /admin 200 in 1215ms (next.js: 8ms, proxy.ts: 4ms, application-code: 1204ms)
+ GET /admin 200 in 29.7s (next.js: 7ms, proxy.ts: 5ms, application-code: 29.7s)
+ GET /admin 200 in 11.7s (next.js: 10ms, proxy.ts: 4ms, application-code: 11.6s)
+ GET /admin 200 in 1843ms (next.js: 8ms, proxy.ts: 3ms, application-code: 1832ms)
+✓ Compiled in 536ms
+ GET /admin 200 in 3.9s (next.js: 364ms, proxy.ts: 55ms, application-code: 3.5s)
+ GET /admin 200 in 2.2s (next.js: 7ms, proxy.ts: 5ms, application-code: 2.2s)
+✓ Compiled in 643ms
+ GET /admin 200 in 3.8s (next.js: 314ms, proxy.ts: 19ms, application-code: 3.5s)
+ GET /admin 200 in 3.2s (next.js: 6ms, proxy.ts: 5ms, application-code: 3.2s)
+ GET /admin 200 in 2.2s (next.js: 7ms, proxy.ts: 3ms, application-code: 2.2s)
+✓ Compiled in 1133ms
+ GET /admin 200 in 5.0s (next.js: 1012ms, proxy.ts: 3ms, application-code: 3.9s)
+ GET /admin 200 in 3.7s (next.js: 249ms, proxy.ts: 88ms, application-code: 3.4s)
+ GET /admin 200 in 3.2s (next.js: 21ms, proxy.ts: 4ms, application-code: 3.2s)
+✓ Compiled in 560ms
+ GET /admin 200 in 3.7s (next.js: 312ms, proxy.ts: 22ms, application-code: 3.4s)
+ GET /admin 200 in 3.2s (next.js: 7ms, proxy.ts: 5ms, application-code: 3.2s)
+ GET /admin 200 in 3.2s (next.js: 8ms, proxy.ts: 3ms, application-code: 3.1s)
+✓ Compiled in 637ms
+ GET /admin 200 in 3.8s (next.js: 329ms, proxy.ts: 23ms, application-code: 3.5s)
+ GET /admin 200 in 3.2s (next.js: 7ms, proxy.ts: 4ms, application-code: 3.2s)
+ GET /admin 200 in 906ms (next.js: 6ms, proxy.ts: 3ms, application-code: 897ms)
+✓ Compiled in 229ms
+ GET /admin 200 in 3.9s (next.js: 321ms, proxy.ts: 23ms, application-code: 3.5s)
+✓ Compiled in 669ms
+ GET /admin 200 in 3.7s (next.js: 311ms, proxy.ts: 23ms, application-code: 3.4s)
+ GET /admin 200 in 3.2s (next.js: 8ms, proxy.ts: 3ms, application-code: 3.2s)
+ GET /admin 200 in 3.2s (next.js: 7ms, proxy.ts: 3ms, application-code: 3.2s)
+✓ Compiled in 785ms
+ GET /admin 200 in 4.2s (next.js: 353ms, proxy.ts: 16ms, application-code: 3.8s)
+ GET /admin 200 in 3.7s (next.js: 265ms, proxy.ts: 23ms, application-code: 3.4s)
+ GET /admin 200 in 1056ms (next.js: 8ms, proxy.ts: 5ms, application-code: 1044ms)
+ GET /admin 200 in 4.2s (next.js: 45ms, proxy.ts: 35ms, application-code: 4.1s)
+ GET /admin 200 in 5.0s (next.js: 412ms, proxy.ts: 4ms, application-code: 4.6s)
+ GET /admin 200 in 892ms (next.js: 7ms, proxy.ts: 5ms, application-code: 880ms)
+ GET /admin 200 in 3.8s (next.js: 424ms, proxy.ts: 4ms, application-code: 3.4s)
+ GET /admin 200 in 3.3s (next.js: 61ms, proxy.ts: 37ms, application-code: 3.2s)
+ GET /admin 200 in 896ms (next.js: 8ms, proxy.ts: 3ms, application-code: 885ms)
+✓ Compiled in 351ms
+ GET /admin 200 in 3.8s (next.js: 319ms, proxy.ts: 20ms, application-code: 3.4s)
+ GET /admin 200 in 1216ms (next.js: 8ms, proxy.ts: 3ms, application-code: 1205ms)
+ GET /admin 200 in 1223ms (next.js: 8ms, proxy.ts: 3ms, application-code: 1212ms)
+ GET /admin 200 in 1230ms (next.js: 7ms, proxy.ts: 3ms, application-code: 1220ms)
+ GET /admin 200 in 3.2s (next.js: 11ms, proxy.ts: 4ms, application-code: 3.2s)
+ GET /admin 200 in 1070ms (next.js: 10ms, proxy.ts: 3ms, application-code: 1056ms)
+ GET /admin 200 in 3.2s (next.js: 7ms, proxy.ts: 5ms, application-code: 3.2s)
+ GET /admin 200 in 1246ms (next.js: 9ms, proxy.ts: 4ms, application-code: 1234ms)
+ GET /admin 200 in 3.2s (next.js: 8ms, proxy.ts: 3ms, application-code: 3.2s)
+ GET /admin 200 in 1076ms (next.js: 7ms, proxy.ts: 4ms, application-code: 1065ms)
+✓ Compiled in 888ms
+ GET /admin 200 in 4.2s (next.js: 534ms, proxy.ts: 29ms, application-code: 3.7s)
+ GET /admin 200 in 1224ms (next.js: 8ms, proxy.ts: 4ms, application-code: 1213ms)
+ GET /admin 200 in 1236ms (next.js: 6ms, proxy.ts: 3ms, application-code: 1226ms)
+ GET /admin 200 in 3.2s (next.js: 8ms, proxy.ts: 4ms, application-code: 3.2s)
+ GET /admin 200 in 1218ms (next.js: 9ms, proxy.ts: 4ms, application-code: 1205ms)
+ GET /admin 200 in 34.9s (next.js: 18ms, proxy.ts: 4ms, application-code: 34.9s)
+ GET /admin 200 in 3.0s (next.js: 8ms, proxy.ts: 4ms, application-code: 3.0s)
+ GET /admin 200 in 3.2s (next.js: 12ms, proxy.ts: 4ms, application-code: 3.2s)
+ GET /admin 200 in 1234ms (next.js: 8ms, proxy.ts: 5ms, application-code: 1221ms)
+ GET /api/auth/get-session 200 in 1822ms (next.js: 443ms, application-code: 1378ms)
+ GET /admin 200 in 3.2s (next.js: 10ms, proxy.ts: 4ms, application-code: 3.2s)
+ GET /admin 200 in 1209ms (next.js: 7ms, proxy.ts: 3ms, application-code: 1199ms)
+ GET /admin 200 in 1243ms (next.js: 7ms, proxy.ts: 3ms, application-code: 1233ms)
+ GET /admin 200 in 1242ms (next.js: 9ms, proxy.ts: 3ms, application-code: 1229ms)
+ GET /api/auth/get-session 200 in 1412ms (next.js: 66ms, application-code: 1347ms)
+ GET /admin 200 in 1213ms (next.js: 8ms, proxy.ts: 4ms, application-code: 1202ms)
+ GET /admin 200 in 1337ms (next.js: 9ms, proxy.ts: 4ms, application-code: 1324ms)
+ GET /admin 200 in 1291ms (next.js: 7ms, proxy.ts: 3ms, application-code: 1281ms)
+ GET /admin 200 in 1212ms (next.js: 8ms, proxy.ts: 3ms, application-code: 1201ms)
+ GET /admin 200 in 1194ms (next.js: 6ms, proxy.ts: 3ms, application-code: 1185ms)
+ GET /admin 200 in 1210ms (next.js: 8ms, proxy.ts: 3ms, application-code: 1200ms)
+ GET /admin 200 in 1245ms (next.js: 8ms, proxy.ts: 4ms, application-code: 1233ms)
+ GET /admin 200 in 1208ms (next.js: 8ms, proxy.ts: 3ms, application-code: 1197ms)
+ GET /admin 200 in 1242ms (next.js: 6ms, proxy.ts: 4ms, application-code: 1232ms)
+ GET /admin 200 in 1210ms (next.js: 7ms, proxy.ts: 3ms, application-code: 1200ms)
+ GET /admin 200 in 1307ms (next.js: 7ms, proxy.ts: 3ms, application-code: 1297ms)
+ GET /admin 200 in 1210ms (next.js: 9ms, proxy.ts: 3ms, application-code: 1198ms)
+ GET /admin 200 in 1405ms (next.js: 6ms, proxy.ts: 3ms, application-code: 1396ms)
+ GET /admin 200 in 1259ms (next.js: 8ms, proxy.ts: 3ms, application-code: 1248ms)
+ GET /admin 200 in 1282ms (next.js: 7ms, proxy.ts: 3ms, application-code: 1272ms)
+ GET /admin 200 in 1202ms (next.js: 8ms, proxy.ts: 3ms, application-code: 1192ms)
+ GET /admin 200 in 1205ms (next.js: 7ms, proxy.ts: 3ms, application-code: 1195ms)
+ GET /admin 200 in 1339ms (next.js: 11ms, proxy.ts: 3ms, application-code: 1325ms)
+ GET /admin 200 in 1219ms (next.js: 7ms, proxy.ts: 3ms, application-code: 1209ms)
+ GET /admin 200 in 1208ms (next.js: 8ms, proxy.ts: 3ms, application-code: 1197ms)
+ GET /admin 200 in 1374ms (next.js: 7ms, proxy.ts: 3ms, application-code: 1364ms)
+ GET /admin 200 in 1405ms (next.js: 8ms, proxy.ts: 3ms, application-code: 1394ms)
+ GET /admin 200 in 1203ms (next.js: 7ms, proxy.ts: 4ms, application-code: 1193ms)
+ GET /admin 200 in 1209ms (next.js: 8ms, proxy.ts: 3ms, application-code: 1199ms)
+ GET /admin 200 in 1387ms (next.js: 7ms, proxy.ts: 3ms, application-code: 1377ms)
+ GET /admin 200 in 1217ms (next.js: 8ms, proxy.ts: 3ms, application-code: 1205ms)
+ GET /admin 200 in 1316ms (next.js: 6ms, proxy.ts: 3ms, application-code: 1306ms)
+ GET /admin 200 in 1339ms (next.js: 8ms, proxy.ts: 3ms, application-code: 1328ms)
+ GET /admin 200 in 2.7s (next.js: 7ms, proxy.ts: 3ms, application-code: 2.7s)
+ GET /admin 200 in 6.9s (next.js: 8ms, proxy.ts: 4ms, application-code: 6.9s)
+ GET /admin 200 in 14.6s (next.js: 8ms, proxy.ts: 3ms, application-code: 14.6s)
+ GET /admin 200 in 17.6s (next.js: 7ms, proxy.ts: 3ms, application-code: 17.6s)
+ GET /admin 200 in 14.2s (next.js: 8ms, proxy.ts: 3ms, application-code: 14.2s)
+ GET /admin 200 in 11.5s (next.js: 7ms, proxy.ts: 3ms, application-code: 11.5s)
+ GET /admin 200 in 6.5s (next.js: 8ms, proxy.ts: 3ms, application-code: 6.5s)
+ GET /admin 200 in 15.9s (next.js: 8ms, proxy.ts: 3ms, application-code: 15.9s)
+ GET /admin 200 in 5.6s (next.js: 8ms, proxy.ts: 3ms, application-code: 5.6s)
+ GET /admin 200 in 2.4s (next.js: 8ms, proxy.ts: 3ms, application-code: 2.4s)
+ GET /admin 200 in 5.2s (next.js: 7ms, proxy.ts: 3ms, application-code: 5.2s)
+ GET /admin 200 in 2.2s (next.js: 9ms, proxy.ts: 3ms, application-code: 2.1s)
+ GET /admin 200 in 4.6s (next.js: 10ms, proxy.ts: 3ms, application-code: 4.6s)
+ GET /admin 200 in 1321ms (next.js: 9ms, proxy.ts: 5ms, application-code: 1308ms)
+✓ Compiled in 509ms
+ GET /admin 200 in 6.9s (next.js: 587ms, proxy.ts: 23ms, application-code: 6.3s)
+ GET /admin 200 in 6.1s (next.js: 12ms, proxy.ts: 5ms, application-code: 6.1s)
+ GET /admin 200 in 1847ms (next.js: 7ms, proxy.ts: 3ms, application-code: 1837ms)
+ GET /admin 200 in 1519ms (next.js: 8ms, proxy.ts: 3ms, application-code: 1508ms)
+ GET /admin 200 in 1856ms (next.js: 9ms, proxy.ts: 4ms, application-code: 1844ms)
+ GET /admin 200 in 6.2s (next.js: 7ms, proxy.ts: 7ms, application-code: 6.2s)
+ GET /admin 200 in 1212ms (next.js: 8ms, proxy.ts: 3ms, application-code: 1201ms)
+ GET /admin 200 in 1904ms (next.js: 9ms, proxy.ts: 3ms, application-code: 1892ms)
+ GET /admin 200 in 5.5s (next.js: 7ms, proxy.ts: 4ms, application-code: 5.5s)
+ GET /admin 200 in 1642ms (next.js: 6ms, proxy.ts: 4ms, application-code: 1631ms)
+ GET /admin 200 in 3.4s (next.js: 8ms, proxy.ts: 4ms, application-code: 3.4s)
+ GET /admin 200 in 1059ms (next.js: 10ms, proxy.ts: 3ms, application-code: 1046ms)
+ GET /admin 200 in 4.5s (next.js: 7ms, proxy.ts: 4ms, application-code: 4.5s)
+ GET /admin 200 in 1995ms (next.js: 8ms, proxy.ts: 4ms, application-code: 1984ms)
+ GET /admin 200 in 5.9s (next.js: 9ms, proxy.ts: 4ms, application-code: 5.9s)
+ GET /admin 200 in 2.2s (next.js: 8ms, proxy.ts: 3ms, application-code: 2.2s)
+ GET /admin 200 in 2.1s (next.js: 8ms, proxy.ts: 3ms, application-code: 2.1s)
+ GET /admin 200 in 46s (next.js: 7ms, proxy.ts: 4ms, application-code: 46s)
+ GET /admin 200 in 4.6s (next.js: 10ms, proxy.ts: 4ms, application-code: 4.6s)
+ GET /admin 200 in 2.2s (next.js: 8ms, proxy.ts: 3ms, application-code: 2.2s)
+2026-07-27T22:08:49.669Z ERROR [Better Auth]: INTERNAL_SERVER_ERROR Error: getaddrinfo ENOTFOUND ep-hidden-salad-avjeuokn-pooler.c-11.us-east-1.aws.neon.tech
+    at async getSessionUser (lib\session.ts:17:21)
+    at async AdminPage (app\admin\page.tsx:19:23)
+  15 | export async function getSessionUser(): Promise<SessionUser | null> {
+  16 |   try {
+> 17 |     const session = await auth.api.getSession({ headers: await headers() })
+     |                     ^
+  18 |     if (!session?.user) return null
+  19 |     
+  20 |     const u = session.user as typeof session.user & { role?: string; phone?: string | null } {
+  errno: -3008,
+  code: 'ENOTFOUND',
+  syscall: 'getaddrinfo',
+  hostname: 'ep-hidden-salad-avjeuokn-pooler.c-11.us-east-1.aws.neon.tech'
+}
+[Better Auth] getSessionUser error: [Error [APIError]: Failed to get session] {
+  status: 'INTERNAL_SERVER_ERROR',
+  body: { message: 'Failed to get session', code: 'FAILED_TO_GET_SESSION' },
+  headers: {},
+  statusCode: 500
+}
+ GET /admin 200 in 237ms (next.js: 8ms, proxy.ts: 3ms, application-code: 225ms)
+2026-07-27T22:08:51.718Z ERROR [Better Auth]: INTERNAL_SERVER_ERROR Error: getaddrinfo ENOTFOUND ep-hidden-salad-avjeuokn-pooler.c-11.us-east-1.aws.neon.tech
+    at async getSessionUser (lib\session.ts:17:21)
+    at async SignInRolePage (app\sign-in\[role]\page.tsx:15:16)
+  15 | export async function getSessionUser(): Promise<SessionUser | null> {
+  16 |   try {
+> 17 |     const session = await auth.api.getSession({ headers: await headers() })
+     |                     ^
+  18 |     if (!session?.user) return null
+  19 |     
+  20 |     const u = session.user as typeof session.user & { role?: string; phone?: string | null } {
+  errno: -3008,
+  code: 'ENOTFOUND',
+  syscall: 'getaddrinfo',
+  hostname: 'ep-hidden-salad-avjeuokn-pooler.c-11.us-east-1.aws.neon.tech'
+}
+[Better Auth] getSessionUser error: [Error [APIError]: Failed to get session] {
+  status: 'INTERNAL_SERVER_ERROR',
+  body: { message: 'Failed to get session', code: 'FAILED_TO_GET_SESSION' },
+  headers: {},
+  statusCode: 500
+}
+ GET /sign-in/admin 200 in 1556ms (next.js: 1411ms, application-code: 145ms)
+2026-07-27T22:08:51.820Z ERROR [Better Auth]: INTERNAL_SERVER_ERROR Error: getaddrinfo ENOTFOUND ep-hidden-salad-avjeuokn-pooler.c-11.us-east-1.aws.neon.tech
+    at async getSessionUser (lib\session.ts:17:21)
+    at async SignInRolePage (app\sign-in\[role]\page.tsx:15:16)
+  15 | export async function getSessionUser(): Promise<SessionUser | null> {
+  16 |   try {
+> 17 |     const session = await auth.api.getSession({ headers: await headers() })
+     |                     ^
+  18 |     if (!session?.user) return null
+  19 |     
+  20 |     const u = session.user as typeof session.user & { role?: string; phone?: string | null } {
+  errno: -3008,
+  code: 'ENOTFOUND',
+  syscall: 'getaddrinfo',
+  hostname: 'ep-hidden-salad-avjeuokn-pooler.c-11.us-east-1.aws.neon.tech'
+}
+[Better Auth] getSessionUser error: [Error [APIError]: Failed to get session] {
+  status: 'INTERNAL_SERVER_ERROR',
+  body: { message: 'Failed to get session', code: 'FAILED_TO_GET_SESSION' },
+  headers: {},
+  statusCode: 500
+}
+ GET /sign-in/admin 200 in 135ms (next.js: 16ms, application-code: 119ms)
+✓ Compiled in 3.2s
+ GET /sign-in/admin 200 in 2.1s (next.js: 99ms, application-code: 2.0s)
+ GET /sign-in/admin 200 in 2.7s (next.js: 266ms, application-code: 2.4s)
+ GET /admin 200 in 4.2s (next.js: 409ms, proxy.ts: 24ms, application-code: 3.8s)
+ GET /admin 200 in 3.3s (next.js: 31ms, proxy.ts: 14ms, application-code: 3.2s)
+ GET /api/auth/get-session 200 in 1592ms (next.js: 225ms, application-code: 1367ms)
+ GET /admin 200 in 3.3s (next.js: 7ms, proxy.ts: 3ms, application-code: 3.3s)
+ GET /admin 200 in 1267ms (next.js: 7ms, proxy.ts: 5ms, application-code: 1255ms)
+ GET /admin 200 in 1211ms (next.js: 6ms, proxy.ts: 3ms, application-code: 1202ms)
+✓ Compiled in 1090ms
+✓ Compiled in 1901ms
+ GET /admin 200 in 5.5s (next.js: 882ms, proxy.ts: 36ms, application-code: 4.5s)
+ GET /admin 200 in 4.1s (next.js: 523ms, proxy.ts: 75ms, application-code: 3.5s)
+ GET /admin 200 in 3.4s (next.js: 58ms, proxy.ts: 8ms, application-code: 3.3s)
+ GET /admin 200 in 3.5s (next.js: 27ms, proxy.ts: 9ms, application-code: 3.4s)
+ GET /admin 200 in 3.5s (next.js: 115ms, proxy.ts: 8ms, application-code: 3.3s)
+ GET /admin 200 in 3.5s (next.js: 138ms, proxy.ts: 19ms, application-code: 3.3s)
+ GET /admin 200 in 899ms (next.js: 6ms, proxy.ts: 3ms, application-code: 891ms)
+ GET /admin 200 in 933ms (next.js: 7ms, proxy.ts: 3ms, application-code: 922ms)
+ GET /admin 200 in 759ms (next.js: 7ms, proxy.ts: 3ms, application-code: 749ms)
+ GET /admin 200 in 783ms (next.js: 46ms, proxy.ts: 4ms, application-code: 733ms)
+ GET /admin 200 in 917ms (next.js: 27ms, proxy.ts: 3ms, application-code: 888ms)
+ GET /admin 200 in 966ms (next.js: 15ms, proxy.ts: 42ms, application-code: 909ms)
+ GET /admin 200 in 819ms (next.js: 7ms, proxy.ts: 3ms, application-code: 809ms)
+ GET /admin 200 in 793ms (next.js: 6ms, proxy.ts: 3ms, application-code: 784ms)
+ GET /admin 200 in 809ms (next.js: 25ms, proxy.ts: 3ms, application-code: 781ms)
+ GET /admin 200 in 849ms (next.js: 6ms, proxy.ts: 3ms, application-code: 840ms)
+ GET /admin 200 in 917ms (next.js: 6ms, proxy.ts: 3ms, application-code: 908ms)
+ GET /admin 200 in 780ms (next.js: 6ms, proxy.ts: 3ms, application-code: 771ms)
+ GET /admin 200 in 760ms (next.js: 7ms, proxy.ts: 3ms, application-code: 750ms)
+ GET /admin 200 in 768ms (next.js: 7ms, proxy.ts: 3ms, application-code: 759ms)
+ GET /admin 200 in 786ms (next.js: 7ms, proxy.ts: 3ms, application-code: 777ms)
+ GET /admin 200 in 794ms (next.js: 13ms, proxy.ts: 4ms, application-code: 777ms)
+ GET /admin 200 in 756ms (next.js: 6ms, proxy.ts: 3ms, application-code: 747ms)
+ GET /admin 200 in 999ms (next.js: 72ms, proxy.ts: 5ms, application-code: 923ms)
+ GET /admin 200 in 1010ms (next.js: 45ms, proxy.ts: 4ms, application-code: 961ms)
+ GET /admin 200 in 791ms (next.js: 7ms, proxy.ts: 3ms, application-code: 781ms)
+ GET /admin 200 in 754ms (next.js: 6ms, proxy.ts: 3ms, application-code: 745ms)
+ GET /admin 200 in 1248ms (next.js: 17ms, proxy.ts: 3ms, application-code: 1227ms)
+ GET /admin 200 in 722ms (next.js: 6ms, proxy.ts: 3ms, application-code: 713ms)
+ GET /admin 200 in 735ms (next.js: 10ms, proxy.ts: 7ms, application-code: 717ms)
+ GET /admin 200 in 921ms (next.js: 47ms, proxy.ts: 3ms, application-code: 871ms)
+ GET /admin 200 in 733ms (next.js: 7ms, proxy.ts: 3ms, application-code: 723ms)
+ GET /admin 200 in 1288ms (next.js: 39ms, proxy.ts: 17ms, application-code: 1232ms)
+ GET /admin 200 in 1229ms (next.js: 8ms, proxy.ts: 3ms, application-code: 1218ms)
+✓ Compiled in 640ms
+✓ Compiled in 1517ms
+ GET /admin 200 in 5.5s (next.js: 1028ms, proxy.ts: 36ms, application-code: 4.5s)
+⨯ ./app/admin/page.tsx:2:1
+Export AdminPanel doesn't exist in target module
+  [90m1 |[0m [36mimport[0m { redirect } [36mfrom[0m [32m'next/navigation'[0m
+[31m[1m>[0m [90m2 |[0m [36mimport[0m { [33mAdminPanel[0m } [36mfrom[0m [32m"@/components/admin/admin-panel"[0m
+  [90m  |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m3 |[0m [36mimport[0m { db, pool } [36mfrom[0m [32m'@/lib/db'[0m
+  [90m4 |[0m [36mimport[0m { user, orden } [36mfrom[0m [32m'@/lib/db/schema'[0m
+  [90m5 |[0m [36mimport[0m { getFriendlyServiceName } [36mfrom[0m [32m'@/lib/data'[0m
+
+The export AdminPanel was not found in module [project]/components/admin/admin-panel.tsx [app-rsc] (ecmascript).
+The module has no exports at all.
+All exports of the module are statically known (It doesn't have dynamic exports). So it's known statically that the requested export doesn't exist.
+
+
+✓ Compiled in 442ms
+✓ Compiled in 2.2s
+ GET /admin 500 in 4.8s (next.js: 4.1s, proxy.ts: 3ms, application-code: 631ms)
+ GET /admin 200 in 8.2s (next.js: 50ms, proxy.ts: 8ms, application-code: 8.2s)
+ GET /admin 200 in 9.2s (next.js: 342ms, proxy.ts: 178ms, application-code: 8.7s)
+ GET /admin 200 in 8.2s (next.js: 129ms, proxy.ts: 7ms, application-code: 8.1s)
+ GET /admin 200 in 8.2s (next.js: 188ms, proxy.ts: 7ms, application-code: 8.0s)
+ GET /admin 200 in 8.2s (next.js: 13ms, proxy.ts: 7ms, application-code: 8.2s)
+ GET /admin 200 in 3.9s (next.js: 399ms, proxy.ts: 22ms, application-code: 3.5s)
+ GET /admin 200 in 3.5s (next.js: 26ms, proxy.ts: 7ms, application-code: 3.5s)
+ GET /admin 200 in 3.5s (next.js: 66ms, proxy.ts: 5ms, application-code: 3.4s)
+ GET /admin 200 in 3.7s (next.js: 110ms, proxy.ts: 8ms, application-code: 3.5s)
+ GET /admin 200 in 3.7s (next.js: 146ms, proxy.ts: 9ms, application-code: 3.5s)
+ GET /admin 200 in 3.7s (next.js: 188ms, proxy.ts: 9ms, application-code: 3.5s)
+ GET /admin 200 in 1086ms (next.js: 7ms, proxy.ts: 4ms, application-code: 1074ms)
+ GET /admin 200 in 1052ms (next.js: 50ms, proxy.ts: 5ms, application-code: 997ms)
+ GET /admin 200 in 1058ms (next.js: 10ms, proxy.ts: 6ms, application-code: 1042ms)
+ GET /admin 200 in 1181ms (next.js: 15ms, proxy.ts: 6ms, application-code: 1160ms)
+ GET /admin 200 in 1175ms (next.js: 56ms, proxy.ts: 5ms, application-code: 1115ms)
+ GET /admin 200 in 1316ms (next.js: 100ms, proxy.ts: 5ms, application-code: 1212ms)
+ GET /admin 200 in 811ms (next.js: 6ms, proxy.ts: 3ms, application-code: 802ms)
+ GET /admin 200 in 967ms (next.js: 9ms, proxy.ts: 2ms, application-code: 955ms)
+ GET /admin 200 in 1039ms (next.js: 55ms, proxy.ts: 4ms, application-code: 980ms)
+ GET /admin 200 in 830ms (next.js: 14ms, proxy.ts: 6ms, application-code: 811ms)
+ GET /admin 200 in 981ms (next.js: 52ms, proxy.ts: 5ms, application-code: 923ms)
+ GET /admin 200 in 954ms (next.js: 20ms, proxy.ts: 4ms, application-code: 930ms)
+ GET /admin 200 in 764ms (next.js: 6ms, proxy.ts: 3ms, application-code: 755ms)
+ GET /admin 200 in 782ms (next.js: 10ms, proxy.ts: 4ms, application-code: 769ms)
+ GET /admin 200 in 802ms (next.js: 10ms, proxy.ts: 3ms, application-code: 790ms)
+ GET /admin 200 in 946ms (next.js: 8ms, proxy.ts: 3ms, application-code: 934ms)
+ GET /admin 200 in 773ms (next.js: 7ms, proxy.ts: 5ms, application-code: 760ms)
+ GET /admin 200 in 10.4s (next.js: 8ms, proxy.ts: 4ms, application-code: 10.4s)
+ GET /admin 200 in 10.7s (next.js: 8ms, proxy.ts: 3ms, application-code: 10.7s)
+ GET /admin 200 in 2.3s (next.js: 59ms, proxy.ts: 3ms, application-code: 2.2s)
+ GET /admin 200 in 2.1s (next.js: 9ms, proxy.ts: 3ms, application-code: 2.1s)
+ GET /admin 200 in 906ms (next.js: 8ms, proxy.ts: 3ms, application-code: 895ms)
+ GET /admin 200 in 900ms (next.js: 7ms, proxy.ts: 3ms, application-code: 890ms)
+ GET /admin 200 in 899ms (next.js: 7ms, proxy.ts: 4ms, application-code: 888ms)
+ GET /admin 200 in 894ms (next.js: 7ms, proxy.ts: 3ms, application-code: 884ms)
+ GET /admin 200 in 1325ms (next.js: 7ms, proxy.ts: 4ms, application-code: 1314ms)
+ GET /admin 200 in 1212ms (next.js: 8ms, proxy.ts: 3ms, application-code: 1201ms)
+ GET /admin 200 in 3.2s (next.js: 7ms, proxy.ts: 3ms, application-code: 3.2s)
+✓ Compiled in 537ms
+ GET /admin 200 in 2.1s (next.js: 7ms, proxy.ts: 3ms, application-code: 2.1s)
+ GET /admin 200 in 27.7s (next.js: 9ms, proxy.ts: 3ms, application-code: 27.7s)
+ GET /admin 200 in 30.8s (next.js: 9ms, proxy.ts: 3ms, application-code: 30.8s)
+ GET /admin 200 in 22.0s (next.js: 7ms, proxy.ts: 3ms, application-code: 21.9s)
+ GET /admin 200 in 32.4s (next.js: 9ms, proxy.ts: 4ms, application-code: 32.3s)
+ GET /admin 200 in 7.3s (next.js: 334ms, proxy.ts: 22ms, application-code: 6.9s)
+ GET /admin 200 in 3.1s (next.js: 8ms, proxy.ts: 3ms, application-code: 3.1s)
+ GET /admin 200 in 4.9s (next.js: 7ms, proxy.ts: 4ms, application-code: 4.9s)
+ GET /admin 200 in 38.9s (next.js: 6ms, proxy.ts: 3ms, application-code: 38.9s)
+ GET /admin 200 in 12.3s (next.js: 15ms, proxy.ts: 3ms, application-code: 12.2s)
+⨯ ./components/admin/admin-panel.tsx:2808:73
+Expression expected
+  [90m2806 |[0m ...
+  [90m2807 |[0m ...= applyMarkup(hourValue, [33mNumber[0m(serviceConfig?.hourMarkupPercent ?? [35m0[0m))
+[31m[1m>[0m [90m2808 |[0m ...Materials.length > [35m0[0m ? editableMaterials :
+  [90m     |[0m                                              [31m[1m^[0m
+
+Parsing ecmascript source code failed
+
+Import trace:
+  Server Component:
+    ./components/admin/admin-panel.tsx
+    ./app/admin/page.tsx
+
+
+
+./app/admin/page.tsx:2:1
+Export AdminPanel doesn't exist in target module
+  [90m1 |[0m [36mimport[0m { redirect } [36mfrom[0m [32m'next/navigation'[0m
+[31m[1m>[0m [90m2 |[0m [36mimport[0m { [33mAdminPanel[0m } [36mfrom[0m [32m"@/components/admin/admin-panel"[0m
+  [90m  |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m3 |[0m [36mimport[0m { db, pool } [36mfrom[0m [32m'@/lib/db'[0m
+  [90m4 |[0m [36mimport[0m { user, orden } [36mfrom[0m [32m'@/lib/db/schema'[0m
+  [90m5 |[0m [36mimport[0m { getFriendlyServiceName } [36mfrom[0m [32m'@/lib/data'[0m
+
+The export AdminPanel was not found in module [project]/components/admin/admin-panel.tsx [app-rsc] (ecmascript).
+The module has no exports at all.
+All exports of the module are statically known (It doesn't have dynamic exports). So it's known statically that the requested export doesn't exist.
+
+
+⨯ ./components/admin/admin-panel.tsx:2808:73
+Expression expected
+  [90m2806 |[0m ...
+  [90m2807 |[0m ...= applyMarkup(hourValue, [33mNumber[0m(serviceConfig?.hourMarkupPercent ?? [35m0[0m))
+[31m[1m>[0m [90m2808 |[0m ...Materials.length > [35m0[0m ? editableMaterials :
+  [90m     |[0m                                              [31m[1m^[0m
+
+Parsing ecmascript source code failed
+
+Import trace:
+  Server Component:
+    ./components/admin/admin-panel.tsx
+    ./app/admin/page.tsx
+
+
+
+./app/admin/page.tsx:2:1
+Export AdminPanel doesn't exist in target module
+  [90m1 |[0m [36mimport[0m { redirect } [36mfrom[0m [32m'next/navigation'[0m
+[31m[1m>[0m [90m2 |[0m [36mimport[0m { [33mAdminPanel[0m } [36mfrom[0m [32m"@/components/admin/admin-panel"[0m
+  [90m  |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m3 |[0m [36mimport[0m { db, pool } [36mfrom[0m [32m'@/lib/db'[0m
+  [90m4 |[0m [36mimport[0m { user, orden } [36mfrom[0m [32m'@/lib/db/schema'[0m
+  [90m5 |[0m [36mimport[0m { getFriendlyServiceName } [36mfrom[0m [32m'@/lib/data'[0m
+
+The export AdminPanel was not found in module [project]/components/admin/admin-panel.tsx [app-rsc] (ecmascript).
+The module has no exports at all.
+All exports of the module are statically known (It doesn't have dynamic exports). So it's known statically that the requested export doesn't exist.
+
+
+✓ Compiled in 2.7s
+ GET /admin 500 in 3.3s (next.js: 3.2s, proxy.ts: 4ms, application-code: 49ms)
+ GET /admin 500 in 3.1s (next.js: 3.1s, proxy.ts: 3ms, application-code: 17ms)
+ GET /admin 200 in 10.9s (next.js: 8ms, proxy.ts: 3ms, application-code: 10.9s)
+ GET /admin 200 in 6.6s (next.js: 58ms, proxy.ts: 3ms, application-code: 6.5s)
+ GET /admin 200 in 6.6s (next.js: 10ms, proxy.ts: 4ms, application-code: 6.6s)
+ GET /admin 200 in 14.2s (next.js: 13ms, proxy.ts: 4ms, application-code: 14.2s)
+ GET /admin 200 in 8.9s (next.js: 11ms, proxy.ts: 8ms, application-code: 8.9s)
+ GET /admin 200 in 9.4s (next.js: 297ms, proxy.ts: 10ms, application-code: 9.1s)
+ GET /admin 200 in 10.8s (next.js: 414ms, proxy.ts: 30ms, application-code: 10.4s)
+ GET /admin 200 in 11.8s (next.js: 611ms, proxy.ts: 28ms, application-code: 11.1s)
+ GET /admin 200 in 3.9s (next.js: 7ms, proxy.ts: 8ms, application-code: 3.8s)
+ GET /admin 200 in 4.7s (next.js: 7ms, proxy.ts: 4ms, application-code: 4.7s)
+ GET /admin 200 in 13.0s (next.js: 7ms, proxy.ts: 3ms, application-code: 12.9s)
+ GET /admin 200 in 4.8s (next.js: 8ms, proxy.ts: 3ms, application-code: 4.8s)
+ GET /admin 200 in 4.7s (next.js: 8ms, proxy.ts: 3ms, application-code: 4.7s)
+ GET /admin 200 in 1584ms (next.js: 10ms, proxy.ts: 3ms, application-code: 1571ms)
+ GET /admin 200 in 1889ms (next.js: 8ms, proxy.ts: 3ms, application-code: 1878ms)
+ GET /admin 200 in 725ms (next.js: 8ms, proxy.ts: 3ms, application-code: 714ms)
+ GET /admin 200 in 2.2s (next.js: 8ms, proxy.ts: 3ms, application-code: 2.2s)
+ GET /admin 200 in 3.0s (next.js: 6ms, proxy.ts: 4ms, application-code: 3.0s)
+ GET /admin 200 in 16.3s (next.js: 70ms, proxy.ts: 10ms, application-code: 16.2s)
+ GET /api/auth/get-session 200 in 4.2s (next.js: 227ms, application-code: 4.0s)
+ GET /admin 200 in 7.0s (next.js: 11ms, proxy.ts: 4ms, application-code: 7.0s)
+ GET /admin 200 in 2.7s (next.js: 8ms, proxy.ts: 3ms, application-code: 2.7s)
+ GET /admin 200 in 1810ms (next.js: 9ms, proxy.ts: 3ms, application-code: 1798ms)
+ GET /admin 200 in 1538ms (next.js: 7ms, proxy.ts: 4ms, application-code: 1526ms)
+ GET /admin 200 in 2.4s (next.js: 8ms, proxy.ts: 3ms, application-code: 2.3s)
+ GET /admin 200 in 1439ms (next.js: 8ms, proxy.ts: 3ms, application-code: 1428ms)
+ GET /admin 200 in 5.4s (next.js: 8ms, proxy.ts: 4ms, application-code: 5.4s)
+ GET /admin 200 in 1531ms (next.js: 8ms, proxy.ts: 5ms, application-code: 1518ms)
+ GET /admin 200 in 52s (next.js: 8ms, proxy.ts: 5ms, application-code: 52s)
+ GET /admin 200 in 3.7s (next.js: 9ms, proxy.ts: 3ms, application-code: 3.7s)
+ GET /admin 200 in 2.2s (next.js: 9ms, proxy.ts: 3ms, application-code: 2.1s)
+ GET /admin 200 in 5.8s (next.js: 9ms, proxy.ts: 4ms, application-code: 5.7s)
+ GET /admin 200 in 1579ms (next.js: 8ms, proxy.ts: 3ms, application-code: 1569ms)
+ GET /admin 200 in 2.2s (next.js: 11ms, proxy.ts: 3ms, application-code: 2.2s)
+ GET /admin 200 in 6.8s (next.js: 7ms, proxy.ts: 3ms, application-code: 6.8s)
+ GET /admin 200 in 2.8s (next.js: 7ms, proxy.ts: 4ms, application-code: 2.8s)
+ GET /admin 200 in 2.2s (next.js: 8ms, proxy.ts: 3ms, application-code: 2.2s)
+ GET /admin 200 in 6.5s (next.js: 9ms, proxy.ts: 4ms, application-code: 6.5s)
+ GET /admin 200 in 1673ms (next.js: 8ms, proxy.ts: 4ms, application-code: 1661ms)
+ GET /admin 200 in 4.5s (next.js: 10ms, proxy.ts: 13ms, application-code: 4.5s)
+ GET /admin 200 in 1890ms (next.js: 7ms, proxy.ts: 3ms, application-code: 1880ms)
+ GET /admin 200 in 7.7s (next.js: 8ms, proxy.ts: 4ms, application-code: 7.7s)
+ GET /admin 200 in 2.2s (next.js: 9ms, proxy.ts: 3ms, application-code: 2.1s)
+ GET /admin 200 in 6.5s (next.js: 7ms, proxy.ts: 3ms, application-code: 6.5s)
+ GET /admin 200 in 1115ms (next.js: 7ms, proxy.ts: 4ms, application-code: 1104ms)

@@ -33,15 +33,31 @@ const trustedOrigins = [
   process.env.VERCEL_PROJECT_PRODUCTION_URL && `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`,
 ].filter((url) => url && typeof url === "string") as string[]
 
-if (!process.env.DATABASE_URL) {
-  throw new Error("DATABASE_URL environment variable is required")
+const authSecret = process.env.BETTER_AUTH_SECRET || process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET || "dev-secret-change-me"
+
+function normalizeDatabaseUrl(url: string | undefined) {
+  if (!url) return undefined
+
+  const hasSslMode = /(?:^|[?&])sslmode=/.test(url)
+  const hasLibpqCompat = /(?:^|[?&])uselibpqcompat=/.test(url)
+
+  if (hasLibpqCompat) return url
+
+  if (hasSslMode) {
+    return url.replace(/([?&])sslmode=(prefer|require|verify-ca)(?=&|$)/i, '$1sslmode=verify-full')
+  }
+
+  return `${url}${url.includes('?') ? '&' : '?'}sslmode=verify-full`
 }
+
+const databaseUrl = normalizeDatabaseUrl(process.env.DATABASE_URL)
 
 export const auth = betterAuth({
   baseURL,
   trustedOrigins,
+  secret: authSecret,
   plugins: [nextCookies()],
-  database: new Pool({ connectionString: process.env.DATABASE_URL }),
+  database: databaseUrl ? new Pool({ connectionString: databaseUrl }) : undefined,
   emailAndPassword: {
     enabled: true,
     minPasswordLength: 8,

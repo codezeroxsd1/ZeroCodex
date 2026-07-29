@@ -24,12 +24,14 @@ import {
   Plus,
   Trash2,
   X,
+  ArrowLeft,
+  ArrowRight,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Logo } from '@/components/brand/logo'
 import { StatusBadge } from '@/components/status-badge'
-import { RevenueChart, JobsChart, SegmentsChart } from './charts'
-import { formatCLP, getFriendlyServiceName, serviceChecklists } from '@/lib/data'
+import { RevenueChart, JobsChart, SegmentsChart, getStatusBucket } from './charts'
+import { formatCLP, getFriendlyServiceName, serviceChecklists, getApplicablePromotions, computeBestPromotionDiscount, applyPromotionToAmount } from '@/lib/data'
 import { updateOrdenStatus, asignarOrdenATecnico } from '@/app/actions/orden'
 import { useSession, signOut } from '@/lib/auth-client'
 
@@ -45,12 +47,37 @@ type View =
   | 'promociones'
   | 'configuraciones'
 
-const requestStatuses = ['pendiente', 'en camino', 'en proceso', 'finalizado', 'rechazado', 'en revision'] as const
+const requestStatuses = [
+  'pendiente',
+  'en camino',
+  'en proceso',
+  'en revision',
+  'cotizando',
+  'cotizado',
+  'recotizando',
+  'aceptada',
+  'pendiente_pago',
+  'pagada',
+  'rechazado',
+  'por_validar',
+  'finalizado',
+  'en_reclamo',
+  'anulada',
+] as const
 
 type RequestStatus = (typeof requestStatuses)[number]
 
 function normalizeRequestStatus(value: unknown): RequestStatus {
   const raw = String(value ?? '').trim().toLowerCase()
+  if (raw.includes('anulada') || raw.includes('cancelada')) return 'anulada'
+  if (raw.includes('pagad')) return 'pagada'
+  if (raw.includes('aceptad')) return 'aceptada'
+  if (raw.includes('pendiente_pago') || raw.includes('pendiente de pago') || raw.includes('pendiente pago')) return 'pendiente_pago'
+  if (raw.includes('reclamo') || raw.includes('disputa')) return 'en_reclamo'
+  if (raw.includes('por validar') || raw.includes('por_validar')) return 'por_validar'
+  if (raw.includes('recotiz')) return 'recotizando'
+  if (raw.includes('cotizando')) return 'cotizando'
+  if (raw.includes('cotiz')) return 'cotizado'
   if (raw.includes('revision') || raw.includes('revisión')) return 'en revision'
   if (raw.includes('rechaz')) return 'rechazado'
   if (raw.includes('camino')) return 'en camino'
@@ -84,6 +111,61 @@ function parseHistory(raw: any): any[] {
   }
   if (Array.isArray(raw)) return raw
   return []
+}
+
+function parseJsonSafe(value: unknown): any {
+  if (!value) return null
+  if (typeof value === 'string') {
+    try {
+      return JSON.parse(value)
+    } catch {
+      return null
+    }
+  }
+  return value
+}
+
+function resolveQuoteOrderId(quote: any): number | null {
+  if (!quote) return null
+
+  const parseCandidate = (candidate: any): number | null => {
+    if (candidate == null) return null
+    const asString = String(candidate).trim()
+    if (!asString) return null
+    const cleaned = asString.replace(/^QT[-_]?/i, '')
+    if (!/^[0-9]+$/.test(cleaned)) return null
+    const numeric = Number(cleaned)
+    if (!Number.isFinite(numeric) || numeric <= 0) return null
+    if (numeric > 99999999999) return null
+    return numeric
+  }
+
+  let orderId = parseCandidate(quote.orderId)
+  if (orderId) return orderId
+
+  orderId = parseCandidate(quote.id)
+  if (orderId) return orderId
+
+  const feedback = parseJsonSafe(quote.feedback)
+  if (feedback && typeof feedback === 'object') {
+    const candidates = [
+      feedback.orderId,
+      feedback.order?.id,
+      feedback.order?.orderId,
+      feedback.order_id,
+      feedback.quote?.orderId,
+      feedback.quote?.id,
+      feedback.quote?.order_id,
+      feedback.quote?.reference,
+      feedback.id,
+    ]
+    for (const candidate of candidates) {
+      const parsed = parseCandidate(candidate)
+      if (parsed) return parsed
+    }
+  }
+
+  return null
 }
 
 function getOrderFeedback(order: any): any {
@@ -136,6 +218,19 @@ export function AdminPanel({
   const safeQuotes = quotes ?? []
   const [showProfile, setShowProfile] = useState(false)
   const [view, setView] = useState<View>(initialView ?? 'dashboard')
+  const [localQuotes, setLocalQuotes] = useState<any[]>(() => {
+    if (typeof window === 'undefined') return Array.isArray(quotes) ? quotes : []
+    try {
+      const stored = window.localStorage.getItem('admin-quotes')
+      if (stored) {
+        const parsed = JSON.parse(stored)
+        if (Array.isArray(parsed)) return parsed
+      }
+    } catch {
+      // ignore invalid storage payloads
+    }
+    return Array.isArray(quotes) ? quotes : []
+  })
   const openOrders = safeOrders.filter((o) => String(o.status ?? o.estado ?? '').toLowerCase() !== 'finalizado').length
 
   useEffect(() => {
@@ -150,10 +245,115 @@ export function AdminPanel({
   const [search, setSearch] = useState('')
   const [requestFilter, setRequestFilter] = useState<'all' | RequestStatus>('all')
   const [billingFilter, setBillingFilter] = useState<'all' | 'pagada' | 'pendiente' | 'cancelada'>('all')
+  const [sendingQuote, setSendingQuote] = useState(false)
 
   const refreshSolicitudes = () => {
     setView('solicitudes')
     router.refresh()
+  }
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem('admin-quotes', JSON.stringify(localQuotes))
+    }
+  }, [localQuotes])
+
+  const handleCreateQuote = (quote: any) => {
+    setLocalQuotes((prev) => [quote, ...prev])
+  }
+
+  const buildQuoteFeedbackPayload = (quote: any, preview?: {
+    estimatedHours?: number
+    details?: string
+    materials?: any[]
+    additionalBlocks?: any[]
+    selectedPromotionId?: string | null
+  }) => {
+    const parsedFeedback = parseFeedback(quote.feedback) ?? parseFeedback(quote.notasTecnico) ?? parseFeedback(quote.notastecnico) ?? {}
+    const mergedFeedback: any = {
+      ...parsedFeedback,
+      ...(preview?.estimatedHours !== undefined ? { estimatedHours: preview.estimatedHours } : {}),
+      ...(preview?.details !== undefined ? { details: preview.details } : {}),
+    }
+
+    if (Array.isArray(preview?.materials) && preview.materials.length > 0) {
+      mergedFeedback.materials = { items: preview.materials }
+    }
+
+    if (Array.isArray(preview?.additionalBlocks)) {
+      const filtered = preview.additionalBlocks
+        .map((block) => ({
+          id: block.id,
+          name: block.name,
+          unit: block.unit,
+          unitPrice: Number(block.unitPrice ?? 0),
+          quantity: Number(block.quantity ?? 0),
+          markupPercent: Number(block.markupPercent ?? 0),
+          ivaPercent: Number(block.ivaPercent ?? 0),
+        }))
+        .filter((block) => block.quantity > 0 && block.unitPrice > 0)
+
+      if (filtered.length > 0) mergedFeedback.additionalBlocks = filtered
+    }
+
+    if (preview?.selectedPromotionId !== undefined) {
+      mergedFeedback.promotionId = preview.selectedPromotionId
+    }
+
+    if (mergedFeedback && typeof mergedFeedback === 'object') {
+      mergedFeedback.quote = {
+        ...((mergedFeedback as any).quote ?? {}),
+        status: 'Enviada',
+        sent: true,
+        sentAt: new Date().toISOString(),
+      }
+    }
+
+    return JSON.stringify(mergedFeedback)
+  }
+
+  const sendQuoteToClient = async (
+    quote: any,
+    preview?: {
+      estimatedHours?: number
+      details?: string
+      materials?: any[]
+      additionalBlocks?: any[]
+      selectedPromotionId?: string | null
+    },
+  ) => {
+    if (!quote?.id) return
+    if (!window.confirm('¿Estás seguro que deseas enviar esta cotización al cliente?')) return
+
+    try {
+      setSendingQuote(true)
+      const feedbackPayload = preview
+        ? buildQuoteFeedbackPayload(quote, preview)
+        : typeof quote.feedback === 'string'
+          ? quote.feedback
+          : JSON.stringify(quote.feedback ?? quote.notasTecnico ?? {})
+      const result = await updateOrdenStatus(String(quote.id), 'cotizado', {
+        feedback: feedbackPayload,
+        appendHistory: {
+          title: 'Cotización enviada',
+          details: 'La cotización fue enviada al cliente.',
+        },
+      })
+
+      if (!result?.success) {
+        window.alert(result?.error || 'No se pudo enviar la cotización al cliente.')
+        return
+      }
+
+      setSelectedQuote((prev) => (prev?.id === quote.id ? { ...prev, status: 'cotizado' } : prev))
+      setLocalQuotes((prev) => prev.map((item) => (item?.id === quote.id ? { ...item, status: 'cotizado' } : item)))
+      window.alert('Cotización enviada al cliente.')
+    } catch (error) {
+      console.error('Error sending quote to client:', error)
+      window.alert('Error enviando cotización al cliente.')
+    } finally {
+      setSendingQuote(false)
+    }
   }
 
   const searchTerm = search.trim().toLowerCase()
@@ -321,6 +521,7 @@ export function AdminPanel({
             <Dashboard
               orders={safeOrders}
               clients={safeClients}
+              technicians={safeTechnicians}
               quotes={safeQuotes}
               updatingOrden={updatingOrden}
               setUpdatingOrden={setUpdatingOrden}
@@ -337,10 +538,11 @@ export function AdminPanel({
               onFilterChange={setRequestFilter}
               adminName={session?.user?.name || 'Admin'}
               refreshSolicitudes={refreshSolicitudes}
+              onCreateQuote={handleCreateQuote}
             />
           )}
           {view === 'agenda' && <Agenda orders={orders} technicians={technicians} />}
-          {view === 'cotizaciones' && <Cotizaciones quotes={safeQuotes} />}
+          {view === 'cotizaciones' && <Cotizaciones quotes={localQuotes} orders={safeOrders} />}
           {view === 'facturacion' && (
             <Facturacion
               quotes={quotes}
@@ -371,12 +573,14 @@ function PageTitle({ title, subtitle }: { title: string; subtitle: string }) {
 function Dashboard({
   orders,
   clients,
+  technicians,
   quotes,
   updatingOrden,
   setUpdatingOrden,
 }: {
   orders?: any[]
   clients?: any[]
+  technicians?: any[]
   quotes?: any[]
   updatingOrden?: string | null
   setUpdatingOrden?: (id: string | null) => void
@@ -453,8 +657,9 @@ function Dashboard({
       .sort((a, b) => b.total - a.total)
       .slice(0, 5)
 
-    const topTechnicians = Object.values(technicianStats)
-      .sort((a, b) => b.completed - a.completed)
+    const topTechnicians = (technicians ?? [])
+      .slice()
+      .sort((a: any, b: any) => (b.rating || 0) - (a.rating || 0))
       .slice(0, 5)
 
     const sortedRecentOrders = enrichedOrders
@@ -687,6 +892,7 @@ function Clientes({ clients = [], orders = [] }: { clients: any[]; orders: any[]
             <tr className="border-b border-border text-left text-xs text-muted-foreground">
               <th className="px-4 py-3 font-medium">Cliente</th>
               <th className="px-4 py-3 font-medium">Tipo</th>
+              <th className="px-4 py-3 font-medium">Calif.</th>
               <th className="hidden px-4 py-3 font-medium sm:table-cell">Trabajos</th>
               <th className="px-4 py-3 font-medium">Facturado</th>
               <th className="hidden px-4 py-3 font-medium md:table-cell">Último</th>
@@ -708,6 +914,7 @@ function Clientes({ clients = [], orders = [] }: { clients: any[]; orders: any[]
                   <td className="px-4 py-3">
                     <span className="rounded-full bg-secondary px-2.5 py-1 text-xs">{c.type}</span>
                   </td>
+                  <td className="px-4 py-3 font-medium flex items-center gap-2"><Star className="size-3.5 fill-warning text-warning" /> {c.rating ?? 0}</td>
                   <td className="hidden px-4 py-3 text-muted-foreground sm:table-cell">{stats.jobs}</td>
                   <td className="px-4 py-3 font-medium">{formatCLP(stats.spent)}</td>
                   <td className="hidden px-4 py-3 text-muted-foreground md:table-cell">{stats.lastService}</td>
@@ -774,6 +981,7 @@ function Solicitudes({
   onFilterChange,
   adminName = 'Admin',
   refreshSolicitudes,
+  onCreateQuote,
 }: {
   orders?: any[]
   technicians?: any[]
@@ -782,14 +990,58 @@ function Solicitudes({
   onFilterChange?: (value: 'all' | RequestStatus) => void
   adminName?: string
   refreshSolicitudes?: () => void
+  onCreateQuote?: (quote: any) => void
 }) {
   const [selectedOrden, setSelectedOrden] = useState<string | null>(null)
   const [selectedTecnico, setSelectedTecnico] = useState<Record<string, string>>({})
+  const [servicesConfig, setServicesConfig] = useState<any[]>([])
+  const [materialsConfig, setMaterialsConfig] = useState<any[]>([])
+  const [localQuotes, setLocalQuotes] = useState<any[]>(() => {
+    if (typeof window === 'undefined') return []
+    try {
+      const stored = window.localStorage.getItem('admin-quotes')
+      if (!stored) return []
+      const parsed = JSON.parse(stored)
+      return Array.isArray(parsed) ? parsed : []
+    } catch {
+      return []
+    }
+  })
   const [assigning, setAssigning] = useState<string | null>(null)
   const [updating, setUpdating] = useState<string | null>(null)
   const [rejectModal, setRejectModal] = useState<{ ordenId: string; motivo: string } | null>(null)
   const [feedbackModal, setFeedbackModal] = useState<{ ordenId: string; motivo: string; technicalEvidence?: unknown } | null>(null)
   const [historyModal, setHistoryModal] = useState<{ ordenId: string; historyEntries: any[] } | null>(null)
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem('admin-quotes', JSON.stringify(localQuotes))
+    }
+  }, [localQuotes])
+
+  useEffect(() => {
+    let isMounted = true
+    const loadSettings = async () => {
+      try {
+        const response = await fetch('/api/admin/settings')
+        const json = await response.json()
+        if (isMounted) {
+          setServicesConfig(Array.isArray(json?.settings?.services) ? json.settings.services : [])
+          setMaterialsConfig(Array.isArray(json?.settings?.materials) ? json.settings.materials : [])
+        }
+      } catch {
+        if (isMounted) {
+          setServicesConfig([])
+          setMaterialsConfig([])
+        }
+      }
+    }
+
+    loadSettings()
+    return () => {
+      isMounted = false
+    }
+  }, [])
 
   const getOrderService = (order: any) =>
     getFriendlyServiceName(order.service ?? order.categoria ?? order.descripcion ?? order.description ?? 'Servicio')
@@ -903,6 +1155,174 @@ function Solicitudes({
     setHistoryModal({ ordenId, historyEntries: parseHistory(historial) })
   }
 
+  const getServiceConfig = (serviceName?: string) => {
+    if (!serviceName) return null
+    const normalizedService = String(serviceName).trim().toLowerCase()
+    return (
+      servicesConfig.find((service: any) => {
+        const name = String(service?.name ?? '').trim().toLowerCase()
+        const short = String(service?.short ?? '').trim().toLowerCase()
+        return name === normalizedService || short === normalizedService || name.includes(normalizedService) || short.includes(normalizedService)
+      }) ?? null
+    )
+  }
+
+  const applyMarkupAndIva = (value: number, markupPercent: number, ivaPercent: number) => {
+    const subtotalWithMarkup = value * (1 + markupPercent / 100)
+    return subtotalWithMarkup * (1 + ivaPercent / 100)
+  }
+
+  const resolveMaterialPrice = (item: any) => {
+    const itemId = String(item?.materialId ?? item?.id ?? item?.material ?? '').trim().toLowerCase()
+    const itemName = String(item?.name ?? item?.material ?? item?.id ?? '').trim().toLowerCase()
+
+    const matchedMaterial = materialsConfig.find((material: any) => {
+      const materialId = String(material?.id ?? '').trim().toLowerCase()
+      const materialName = String(material?.name ?? '').trim().toLowerCase()
+      return (
+        (itemId && materialId && (itemId === materialId || itemId.includes(materialId) || materialId.includes(itemId))) ||
+        (itemName && materialName && (itemName === materialName || itemName.includes(materialName) || materialName.includes(itemName)))
+      )
+    })
+
+    const explicitPrice = Number(item?.price ?? item?.unitPrice ?? item?.unit_price ?? item?.cost ?? 0)
+    const configPrice = Number(matchedMaterial?.price ?? 0)
+    const subtotal = Number(item?.subtotal ?? item?.total ?? 0)
+    const quantity = Number(item?.quantity ?? item?.qty ?? 1)
+
+    return explicitPrice > 0 ? explicitPrice : configPrice > 0 ? configPrice : quantity > 0 && subtotal > 0 ? subtotal / quantity : 0
+  }
+
+  type QuoteBreakdown = {
+    materialsValue: number
+    hoursValue: number
+    visitPrice: number
+    additionalVisitCount: number
+    visitValue: number
+    estimatedHours: number
+  }
+
+  const getQuoteBreakdown = (feedbackValue: unknown, serviceName?: string): QuoteBreakdown => {
+    const feedback = parseFeedback(feedbackValue)
+    const directItems = Array.isArray(feedback?.materials?.items)
+      ? feedback.materials.items
+      : Array.isArray(feedback?.materials)
+        ? feedback.materials
+        : []
+
+    const materialEntries = directItems.length > 0
+      ? directItems
+      : (Array.isArray(feedback?.missingMaterials)
+          ? feedback.missingMaterials
+          : Array.isArray(feedback?.rejectionFeedback?.missingMaterials)
+            ? feedback.rejectionFeedback.missingMaterials
+            : [])
+
+    let materialsValue = 0
+    materialEntries.forEach((item: any) => {
+      const quantity = Number(item?.quantity ?? item?.qty ?? 1)
+      const unitPrice = resolveMaterialPrice(item)
+      materialsValue += unitPrice * quantity
+    })
+
+    const serviceConfig = getServiceConfig(serviceName)
+    const estimatedHours = Number(feedback?.estimatedHours ?? 0)
+    const hourValue = Number(serviceConfig?.hourValue ?? 0)
+    const hoursValue = estimatedHours > 0
+      ? applyMarkupAndIva(estimatedHours * hourValue, Number(serviceConfig?.hourMarkupPercent ?? 0), Number(serviceConfig?.hourIvaPercent ?? 0))
+      : 0
+    const visitPrice = Number(serviceConfig?.visitPrice ?? 0)
+    const visitUnitValue = applyMarkupAndIva(visitPrice, Number(serviceConfig?.markupPercent ?? 0), Number(serviceConfig?.ivaPercent ?? 0))
+    const additionalVisitCount = estimatedHours > 8 ? Math.max(0, Math.floor((estimatedHours - 1) / 8)) : 0
+    const visitValue = visitUnitValue * (1 + additionalVisitCount)
+
+    return {
+      materialsValue,
+      hoursValue,
+      visitPrice,
+      additionalVisitCount,
+      visitValue,
+      estimatedHours,
+    }
+  }
+
+  const createExtraQuote = async (solicitud: any) => {
+    const feedbackRaw = getOrderFeedback(solicitud)
+    const parsedFeedback = parseFeedback(feedbackRaw)
+    const quoteId = `QT-${Date.now()}`
+    const clientName = solicitud.clienteNombre || solicitud.client || 'Cliente'
+    const serviceName = getOrderService(solicitud)
+    const quoteBreakdown = getQuoteBreakdown(parsedFeedback, serviceName)
+    const estimatedHours = quoteBreakdown.estimatedHours
+    const quoteTotal = quoteBreakdown.materialsValue + quoteBreakdown.visitValue + quoteBreakdown.hoursValue
+
+    const quoteNotes = [
+      parsedFeedback?.details,
+      parsedFeedback?.reasons?.length ? `Motivos: ${parsedFeedback.reasons.join(', ')}` : null,
+      parsedFeedback?.missingMaterials?.length ? `Materiales faltantes: ${parsedFeedback.missingMaterials.map((item: any) => item.name || item.id).join(', ')}` : null,
+      Number.isFinite(estimatedHours) && estimatedHours > 0 ? `Horas estimadas: ${estimatedHours}` : null,
+    ].filter(Boolean)
+
+    const quote = {
+      id: quoteId,
+      orderId: solicitud.id,
+      client: clientName,
+      service: serviceName,
+      date: new Date().toLocaleDateString('es-CL'),
+      status: 'Borrador' as const,
+      total: Number(quoteTotal) || 0,
+      estimatedHours: Number(estimatedHours) || 0,
+      pricing: {
+        materialsValue: quoteBreakdown.materialsValue || 0,
+        visitPrice: quoteBreakdown.visitPrice || 0,
+        visitValue: quoteBreakdown.visitValue || 0,
+        additionalVisits: quoteBreakdown.additionalVisitCount || 0,
+        hoursValue: quoteBreakdown.hoursValue || 0,
+      },
+      notes: quoteNotes.join(' | '),
+      feedback: parsedFeedback,
+    }
+
+    onCreateQuote?.(quote)
+
+    const nextFeedback = {
+      ...(typeof parsedFeedback === 'object' && parsedFeedback !== null ? parsedFeedback : {}),
+      pricing: {
+        materialsValue: quoteBreakdown.materialsValue || 0,
+        visitPrice: quoteBreakdown.visitPrice || 0,
+        visitValue: quoteBreakdown.visitValue || 0,
+        additionalVisits: quoteBreakdown.additionalVisitCount || 0,
+        hoursValue: quoteBreakdown.hoursValue || 0,
+      },
+      quote: {
+        id: quoteId,
+        status: 'Borrador',
+        sent: false,
+        createdAt: new Date().toISOString(),
+      },
+    }
+
+    try {
+      const currentStatus = normalizeRequestStatus(solicitud.estado ?? solicitud.status ?? 'en revision')
+      const result = await updateOrdenStatus(String(solicitud.id), currentStatus, {
+        feedback: JSON.stringify(nextFeedback),
+        appendHistory: {
+          title: 'Cotización extra creada',
+          details: `Se generó la cotización ${quoteId} con base en el feedback de revisión.`,
+        },
+      })
+
+      if (!result.success) {
+        alert(`❌ Error: ${result.error}`)
+        return
+      }
+
+      refreshSolicitudes?.()
+    } catch (error) {
+      alert(`❌ Error: ${String(error)}`)
+    }
+  }
+
   const parseFeedback = (raw: any) => {
     if (!raw) return null
     if (typeof raw !== 'string') return raw
@@ -942,9 +1362,16 @@ function Solicitudes({
   const statusLabel = (status: RequestStatus) => {
     if (status === 'en proceso') return 'En proceso'
     if (status === 'en camino') return 'En camino'
+    if (status === 'cotizando') return 'Cotizando'
+    if (status === 'cotizado') return 'Cotizado'
+    if (status === 'recotizando') return 'Recotizando'
+    if (status === 'aceptada') return 'Aceptada'
+    if (status === 'pendiente_pago') return 'Pendiente de pago'
+    if (status === 'pagada') return 'Pagada'
     if (status === 'finalizado') return 'Finalizado'
     if (status === 'rechazado') return 'Rechazado'
     if (status === 'en revision') return 'En revisión'
+    if (status === 'anulada') return 'Anulada'
     return 'Pendiente'
   }
 
@@ -1149,6 +1576,7 @@ function Solicitudes({
                                       <button
                                         className="rounded border border-amber-500 px-2 py-1 text-xs text-amber-600"
                                         type="button"
+                                        onClick={() => createExtraQuote(solicitud)}
                                       >
                                         Cotizar extra
                                       </button>
@@ -1292,6 +1720,7 @@ function Solicitudes({
                                     <button
                                       className="inline-flex rounded border border-amber-500 px-3 py-2 text-xs text-amber-600"
                                       type="button"
+                                      onClick={() => createExtraQuote(solicitud)}
                                     >
                                       Cotizar extra
                                     </button>
@@ -1432,6 +1861,12 @@ function Solicitudes({
                             <p className="mt-1 text-sm text-foreground">{rejectionFeedback.details}</p>
                           </div>
                         ) : null}
+                        {rejectionFeedback.estimatedHours !== undefined && rejectionFeedback.estimatedHours !== null && rejectionFeedback.estimatedHours !== '' ? (
+                          <div className="mt-3 rounded-2xl border border-destructive/20 bg-background/80 p-3">
+                            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">Horas estimadas</p>
+                            <p className="mt-1 text-sm font-semibold text-foreground">{String(rejectionFeedback.estimatedHours)} h</p>
+                          </div>
+                        ) : null}
                         {rejectionFeedback.timestamp ? (
                           <p className="mt-3 text-xs text-muted-foreground">{new Date(rejectionFeedback.timestamp).toLocaleString('es-CL')}</p>
                         ) : null}
@@ -1441,7 +1876,7 @@ function Solicitudes({
                 }
 
                 // Si es un JSON válido con estructura de feedback
-                if (feedback && (feedback.materials || feedback.checklist || feedback.photos || feedback.signature || feedback.voltage || feedback.current || feedback.earthResistance || feedback.continuity || feedback.observations)) {
+                if (feedback && (feedback.materials || feedback.checklist || feedback.photos || feedback.signature || feedback.voltage || feedback.current || feedback.earthResistance || feedback.continuity || feedback.observations || feedback.evidenceRequirements || feedback.evidence)) {
                   return (
                     <div className="mt-4 space-y-6">
                       {/* Técnico */}
@@ -1484,6 +1919,16 @@ function Solicitudes({
                           )}
                         </div>
                       )}
+                      {feedback.estimatedHours !== undefined && feedback.estimatedHours !== null && feedback.estimatedHours !== '' ? (
+                        <div className="rounded-2xl border border-border bg-background p-4">
+                          <h3 className="text-sm font-semibold mb-3">Horas estimadas</h3>
+                          <div className="rounded-2xl border border-border bg-secondary/10 p-3">
+                            <p className="text-xs text-muted-foreground">Estimación del técnico</p>
+                            <p className="mt-1 text-sm font-semibold">{String(feedback.estimatedHours)} h</p>
+                          </div>
+                        </div>
+                      ) : null}
+
                       {feedback.departureAt || feedback.arrivalAt || feedback.workStartAt || feedback.workEndAt ? (
                         <div className="rounded-2xl border border-border bg-background p-4">
                           <h3 className="text-sm font-semibold mb-3">Tiempos de trabajo</h3>
@@ -1523,43 +1968,87 @@ function Solicitudes({
                       ) : null}
 
                       {/* Evidencia técnica */}
-                      {feedback.voltage || feedback.current || feedback.earthResistance || feedback.continuity || feedback.observations ? (
-                        <div className="rounded-2xl border border-border bg-background p-4">
-                          <h3 className="text-sm font-semibold mb-3">Evidencia Técnica</h3>
-                          <div className="grid gap-3 sm:grid-cols-2">
-                            {feedback.voltage && (
-                              <div className="rounded-2xl border border-border bg-secondary/10 p-3">
-                                <p className="text-xs text-muted-foreground">Voltaje</p>
-                                <p className="mt-1 text-sm font-semibold">{feedback.voltage}</p>
+                      {(() => {
+                        const evidenceEntries = Object.entries(feedback.evidence || {}).filter(([, value]) => value && typeof value === 'object')
+                        const hasEvidenceValues = Boolean(
+                          feedback.voltage || feedback.current || feedback.earthResistance || feedback.continuity || feedback.observations || evidenceEntries.length
+                        )
+
+                        if (!hasEvidenceValues) return null
+
+                        return (
+                          <div className="rounded-2xl border border-border bg-background p-4">
+                            <h3 className="text-sm font-semibold mb-3">Evidencia Técnica</h3>
+
+                            {(feedback.voltage || feedback.current || feedback.earthResistance || feedback.continuity || feedback.observations) && (
+                              <div className="grid gap-3 sm:grid-cols-2">
+                                {feedback.voltage && (
+                                  <div className="rounded-2xl border border-border bg-secondary/10 p-3">
+                                    <p className="text-xs text-muted-foreground">Voltaje</p>
+                                    <p className="mt-1 text-sm font-semibold">{feedback.voltage}</p>
+                                  </div>
+                                )}
+                                {feedback.current && (
+                                  <div className="rounded-2xl border border-border bg-secondary/10 p-3">
+                                    <p className="text-xs text-muted-foreground">Corriente</p>
+                                    <p className="mt-1 text-sm font-semibold">{feedback.current}</p>
+                                  </div>
+                                )}
+                                {feedback.earthResistance && (
+                                  <div className="rounded-2xl border border-border bg-secondary/10 p-3">
+                                    <p className="text-xs text-muted-foreground">Resistencia de tierra</p>
+                                    <p className="mt-1 text-sm font-semibold">{feedback.earthResistance}</p>
+                                  </div>
+                                )}
+                                {feedback.continuity && (
+                                  <div className="rounded-2xl border border-border bg-secondary/10 p-3">
+                                    <p className="text-xs text-muted-foreground">Continuidad</p>
+                                    <p className="mt-1 text-sm font-semibold">{feedback.continuity}</p>
+                                  </div>
+                                )}
                               </div>
                             )}
-                            {feedback.current && (
-                              <div className="rounded-2xl border border-border bg-secondary/10 p-3">
-                                <p className="text-xs text-muted-foreground">Corriente</p>
-                                <p className="mt-1 text-sm font-semibold">{feedback.current}</p>
+
+                            {feedback.observations && (
+                              <div className="mt-3 rounded-2xl border border-border bg-secondary/10 p-3">
+                                <p className="text-xs text-muted-foreground">Observaciones técnicas</p>
+                                <p className="mt-1 text-sm">{feedback.observations}</p>
                               </div>
                             )}
-                            {feedback.earthResistance && (
-                              <div className="rounded-2xl border border-border bg-secondary/10 p-3">
-                                <p className="text-xs text-muted-foreground">Resistencia de tierra</p>
-                                <p className="mt-1 text-sm font-semibold">{feedback.earthResistance}</p>
-                              </div>
-                            )}
-                            {feedback.continuity && (
-                              <div className="rounded-2xl border border-border bg-secondary/10 p-3">
-                                <p className="text-xs text-muted-foreground">Continuidad</p>
-                                <p className="mt-1 text-sm font-semibold">{feedback.continuity}</p>
+
+                            {evidenceEntries.length > 0 && (
+                              <div className="mt-4 space-y-3">
+                                {evidenceEntries.map(([templateId, value]: [string, any]) => {
+                                  const requirements = value?.evidenceRequirements || feedback.evidenceRequirements?.[templateId] || null
+                                  const entries = Object.entries(value || {}).filter(([key]) => key !== 'evidenceRequirements')
+                                  return (
+                                    <div key={templateId} className="rounded-2xl border border-border bg-secondary/10 p-3">
+                                      <p className="text-sm font-semibold">{templateId}</p>
+                                      {requirements && (
+                                        <div className="mt-2 flex flex-wrap gap-2">
+                                          {requirements.photosBefore && <span className="rounded-full bg-primary/10 px-2.5 py-1 text-[11px] text-primary">Fotos antes</span>}
+                                          {requirements.photosAfter && <span className="rounded-full bg-primary/10 px-2.5 py-1 text-[11px] text-primary">Fotos después</span>}
+                                          {requirements.measurements && <span className="rounded-full bg-primary/10 px-2.5 py-1 text-[11px] text-primary">Mediciones</span>}
+                                        </div>
+                                      )}
+                                      {entries.length > 0 && (
+                                        <div className="mt-3 space-y-2">
+                                          {entries.map(([key, entryValue]: [string, any]) => (
+                                            <div key={key} className="rounded-xl border border-border bg-background/70 p-2">
+                                              <p className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">{key}</p>
+                                              <p className="mt-1 text-sm">{String(entryValue)}</p>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      )}
+                                    </div>
+                                  )
+                                })}
                               </div>
                             )}
                           </div>
-                          {feedback.observations && (
-                            <div className="mt-3 rounded-2xl border border-border bg-secondary/10 p-3">
-                              <p className="text-xs text-muted-foreground">Observaciones técnicas</p>
-                              <p className="mt-1 text-sm">{feedback.observations}</p>
-                            </div>
-                          )}
-                        </div>
-                      ) : null}
+                        )
+                      })()}
 
                       {/* Checklist */}
                       {feedback.checklist && (
@@ -1677,16 +2166,22 @@ function Solicitudes({
 }
 
 function Agenda({ orders, technicians }: { orders?: any[]; technicians?: any[] }) {
-  const [agendaView, setAgendaView] = useState<'daily' | 'weekly' | 'monthly'>('daily')
+  const [agendaView, setAgendaView] = useState<'daily' | 'weekly' | 'monthly'>('monthly')
 
   const timeBlocks = ['09:00', '11:00', '13:00', '15:30', '17:00', '19:00']
 
   const todayKey = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Santiago' })
   const [selectedDateKey, setSelectedDateKey] = useState(todayKey)
+  const [calendarMonthKey, setCalendarMonthKey] = useState(todayKey.slice(0, 7))
 
   const parseDateKey = (dateKey: string) => {
     const [year, month, day] = dateKey.split('-').map((part) => Number(part))
     return new Date(Date.UTC(year, month - 1, day))
+  }
+
+  const parseMonthKey = (monthKey: string) => {
+    const [year, month] = monthKey.split('-').map((part) => Number(part))
+    return new Date(Date.UTC(year, month - 1, 1))
   }
 
   const selectedDate = parseDateKey(selectedDateKey)
@@ -1772,12 +2267,13 @@ function Agenda({ orders, technicians }: { orders?: any[]; technicians?: any[] }
   }
 
   const weekKeys = getDateRange(todayKey, 7)
-  const monthDays = new Date(Number(todayKey.slice(0, 4)), Number(todayKey.slice(5, 7)), 0).getDate()
-  const monthKeys = getDateRange(`${todayKey.slice(0, 7)}-01`, monthDays)
+  const [monthYear, monthString] = [calendarMonthKey.slice(0, 4), calendarMonthKey.slice(5, 7)]
+  const monthDays = new Date(Number(monthYear), Number(monthString), 0).getDate()
+  const monthKeys = getDateRange(`${calendarMonthKey}-01`, monthDays)
 
   const dailyOrders = activeOrders.filter((o) => o.scheduleDateKey === selectedDateKey)
   const weeklyOrders = activeOrders.filter((o) => o.scheduleDateKey && weekKeys.includes(o.scheduleDateKey))
-  const monthlyOrders = activeOrders.filter((o) => o.scheduleDateKey && o.scheduleDateKey.startsWith(todayKey.slice(0, 7)))
+  const monthlyOrders = activeOrders.filter((o) => o.scheduleDateKey && o.scheduleDateKey.startsWith(calendarMonthKey))
 
   const viewOrders = agendaView === 'daily' ? dailyOrders : agendaView === 'weekly' ? weeklyOrders : monthlyOrders
 
@@ -1844,11 +2340,180 @@ function Agenda({ orders, technicians }: { orders?: any[]; technicians?: any[] }
     return grouped
   }
 
+  const statusColorClasses: Record<string, string> = {
+    pendiente: 'bg-amber-500 text-amber-foreground',
+    'en camino': 'bg-sky-500 text-sky-foreground',
+    'en proceso': 'bg-orange-500 text-orange-foreground',
+    finalizado: 'bg-emerald-500 text-emerald-foreground',
+    rechazado: 'bg-destructive-500 text-destructive-foreground',
+    'en revision': 'bg-violet-500 text-violet-foreground',
+  }
+
+  const monthStatusCounts = monthKeys.reduce((acc: Record<string, Record<string, number>>, key) => {
+    acc[key] = normalizedOrders
+      .filter((order) => order.scheduleDateKey === key)
+      .reduce((dayAcc: Record<string, number>, order) => {
+        const status = order.status || 'pendiente'
+        dayAcc[status] = (dayAcc[status] || 0) + 1
+        return dayAcc
+      }, {})
+    return acc
+  }, {})
+
+  const monthOrders = normalizedOrders.filter((o) => o.scheduleDateKey && monthKeys.includes(o.scheduleDateKey))
+  const monthMarkerCounts = monthKeys.reduce((acc: Record<string, number>, key) => {
+    acc[key] = monthOrders.filter((order) => order.scheduleDateKey === key).length
+    return acc
+  }, {})
+
+  const getMonthName = (monthKey: string) => {
+    const [year, month] = monthKey.split('-').map(Number)
+    const date = new Date(Date.UTC(year, month - 1, 1))
+    return date.toLocaleDateString('es-CL', { month: 'long', year: 'numeric', timeZone: 'America/Santiago' })
+  }
+
+  const changeCalendarMonth = (delta: number) => {
+    const current = parseMonthKey(calendarMonthKey)
+    current.setUTCMonth(current.getUTCMonth() + delta)
+    const nextYear = current.getUTCFullYear()
+    const nextMonth = String(current.getUTCMonth() + 1).padStart(2, '0')
+    setCalendarMonthKey(`${nextYear}-${nextMonth}`)
+  }
+
+  const buildCalendarGrid = () => {
+    const firstDayDate = parseMonthKey(calendarMonthKey)
+    const startDay = firstDayDate.getUTCDay()
+    const startOffset = (startDay + 6) % 7 // lunes como primer día
+    const totalDays = monthDays
+    const cells: Array<{ key: string; day: number; count: number; date: Date } | null> = []
+
+    for (let i = 0; i < startOffset; i += 1) {
+      cells.push(null)
+    }
+
+    for (let day = 1; day <= totalDays; day += 1) {
+      const key = `${calendarMonthKey}-${String(day).padStart(2, '0')}`
+      const date = new Date(Date.UTC(Number(monthYear), Number(monthString) - 1, day))
+      const count = monthMarkerCounts[key] || 0
+      cells.push({ key, day, count, date })
+    }
+
+    while (cells.length % 7 !== 0) {
+      cells.push(null)
+    }
+
+    return cells
+  }
+
+  const calendarCells = buildCalendarGrid()
+
   const dailyGrouped = groupByDay(dailyOrders)
   const weeklyGrouped = groupByDay(weeklyOrders)
   const monthlyGrouped = groupByDay(monthlyOrders)
 
   const displayGroups = agendaView === 'daily' ? dailyGrouped : agendaView === 'weekly' ? weeklyGrouped : monthlyGrouped
+
+  const renderAgendaGroups = () => {
+    if (agendaView === 'monthly') {
+      return (
+        <div className="overflow-hidden rounded-2xl border border-border bg-background p-4">
+          <div className="grid grid-cols-7 gap-2 text-center text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+            {['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map((day) => (
+              <div key={day} className="py-2">
+                {day}
+              </div>
+            ))}
+          </div>
+          <div className="overflow-x-auto pb-2">
+            <div className="min-w-[560px] grid grid-cols-7 gap-2 pt-2">
+              {calendarCells.map((cell, index) => {
+                if (!cell) {
+                  return <div key={`empty-${index}`} className="min-h-[80px] rounded-2xl bg-card" />
+                }
+
+                const isToday = cell.key === todayKey
+                const isSelected = cell.key === selectedDateKey
+                const count = cell.count
+
+                return (
+                  <button
+                    key={cell.key}
+                    type="button"
+                    onClick={() => {
+                      setSelectedDateKey(cell.key)
+                      setAgendaView('daily')
+                    }}
+                    className={cn(
+                      'group min-h-[80px] rounded-2xl border p-3 text-left transition',
+                      isSelected
+                        ? 'border-primary bg-primary/10'
+                        : 'border-border bg-card hover:border-primary/70 hover:bg-accent/10',
+                    )}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-sm font-semibold">{cell.day}</span>
+                      {isToday ? <span className="rounded-full bg-primary/10 px-2 py-1 text-[11px] text-primary">Hoy</span> : null}
+                    </div>
+                    <p className="mt-3 text-xs text-muted-foreground">
+                      {count > 0 ? `${count} solicitud${count !== 1 ? 'es' : ''}` : 'Sin solicitudes'}
+                    </p>
+                    {count > 0 ? (
+                      <div className="mt-3 flex flex-wrap gap-1">
+                        {Object.entries(monthStatusCounts[cell.key] || {}).slice(0, 2).map(([status, statusCount]) => (
+                          <span
+                            key={status}
+                            className={cn(
+                              'rounded-full px-2 py-1 text-[11px] font-semibold',
+                              statusColorClasses[status] ?? 'bg-secondary/10 text-secondary',
+                            )}
+                          >
+                            {statusCount} {status}
+                          </span>
+                        ))}
+                      </div>
+                    ) : null}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        </div>
+      )
+    }
+
+    if (Object.keys(displayGroups).length > 0) {
+      return (
+        <>
+          {Object.entries(displayGroups).map(([group, items]) => (
+            <div key={group} className="rounded-2xl border border-border bg-background p-4">
+              <p className="mb-3 text-sm font-semibold">{group}</p>
+              <div className="space-y-3">
+                {items.map((order) => {
+                  const techName = order.tecnicoNombre || order.tecniconombre || 'Sin asignar'
+                  const timeLabel = formatOrderTime(order)
+                  return (
+                    <div key={order.id} className="flex flex-col rounded-2xl border border-border bg-card p-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <p className="font-medium">{order.clienteNombre || order.client || 'Cliente'}</p>
+                        <p className="text-xs text-muted-foreground">{getFriendlyServiceName(order.service || order.categoria || order.descripcion)}</p>
+                        <p className="mt-1 text-xs text-muted-foreground">Hora reservada: {timeLabel}</p>
+                      </div>
+                      <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground sm:mt-0">
+                        <span>{timeLabel}</span>
+                        <span className="rounded-full bg-primary/10 px-2.5 py-1 text-primary">{techName}</span>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          ))}
+        </>
+      )
+    }
+
+    return <p className="text-sm text-muted-foreground">No hay órdenes para esta vista.</p>
+  }
 
   return (
     <div>
@@ -1900,6 +2565,34 @@ function Agenda({ orders, technicians }: { orders?: any[]; technicians?: any[] }
         </div>
       )}
 
+      {agendaView === 'monthly' && (
+        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+          <button
+            onClick={() => changeCalendarMonth(-1)}
+            className="inline-flex items-center justify-center gap-2 rounded-full border border-border bg-card px-4 py-2 text-sm font-medium text-muted-foreground hover:bg-background sm:w-auto w-full"
+          >
+            <ArrowLeft className="size-4" />
+            Mes anterior
+          </button>
+          <div className="rounded-full border border-border bg-background px-4 py-2 text-sm font-semibold text-center sm:text-left w-full sm:w-auto">
+            {getMonthName(calendarMonthKey)}
+          </div>
+          <input
+            type="month"
+            value={calendarMonthKey}
+            onChange={(event) => setCalendarMonthKey(event.target.value)}
+            className="rounded-full border border-border bg-card px-4 py-2 text-sm font-medium text-muted-foreground transition focus:outline-none focus:ring-2 focus:ring-primary sm:w-auto w-full"
+          />
+          <button
+            onClick={() => changeCalendarMonth(1)}
+            className="inline-flex items-center justify-center gap-2 rounded-full border border-border bg-card px-4 py-2 text-sm font-medium text-muted-foreground hover:bg-background sm:w-auto w-full"
+          >
+            Siguiente mes
+            <ArrowRight className="size-4" />
+          </button>
+        </div>
+      )}
+
       <div className="grid gap-4 xl:grid-cols-[1.4fr_0.8fr]">
         <div className="space-y-4">
           <div className="rounded-2xl border border-border bg-card p-5">
@@ -1925,34 +2618,7 @@ function Agenda({ orders, technicians }: { orders?: any[]; technicians?: any[] }
           <div className="rounded-2xl border border-border bg-card p-5">
             <p className="font-semibold">Agenda {agendaView === 'daily' ? 'diaria' : agendaView === 'weekly' ? 'semanal' : 'mensual'}</p>
             <div className="mt-4 space-y-4">
-              {Object.keys(displayGroups).length > 0 ? (
-                Object.entries(displayGroups).map(([group, items]) => (
-                  <div key={group} className="rounded-2xl border border-border bg-background p-4">
-                    <p className="mb-3 text-sm font-semibold">{group}</p>
-                    <div className="space-y-3">
-                      {items.map((order) => {
-                        const techName = order.tecnicoNombre || order.tecniconombre || 'Sin asignar'
-                        const timeLabel = formatOrderTime(order)
-                        return (
-                          <div key={order.id} className="flex flex-col rounded-2xl border border-border bg-card p-3 sm:flex-row sm:items-center sm:justify-between">
-                            <div>
-                              <p className="font-medium">{order.clienteNombre || order.client || 'Cliente'}</p>
-                              <p className="text-xs text-muted-foreground">{getFriendlyServiceName(order.service || order.categoria || order.descripcion)}</p>
-                              <p className="mt-1 text-xs text-muted-foreground">Hora reservada: {timeLabel}</p>
-                            </div>
-                            <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground sm:mt-0">
-                              <span>{timeLabel}</span>
-                              <span className="rounded-full bg-primary/10 px-2.5 py-1 text-primary">{techName}</span>
-                            </div>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <p className="text-sm text-muted-foreground">No hay órdenes para esta vista.</p>
-              )}
+              {renderAgendaGroups()}
             </div>
           </div>
         </div>
@@ -2005,38 +2671,1365 @@ function Agenda({ orders, technicians }: { orders?: any[]; technicians?: any[] }
   )
 }
 
-function Cotizaciones(props: { quotes?: any[] }) {
-  const safeQuotes = Array.isArray(props.quotes) ? props.quotes : []
-  const styles: Record<string, string> = {
-    Enviada: 'bg-warning/15 text-warning',
-    Aprobada: 'bg-primary/15 text-primary',
-    Rechazada: 'bg-destructive/15 text-destructive',
+function Cotizaciones(props: { quotes?: any[]; orders?: any[] }) {
+  const initialQuotes = Array.isArray(props.quotes) ? props.quotes : []
+  const safeOrders = Array.isArray(props.orders) ? props.orders : []
+  const [localQuotes, setLocalQuotes] = useState<any[]>(initialQuotes)
+  const [selectedQuote, setSelectedQuote] = useState<any | null>(null)
+  const [previewQuoteOpen, setPreviewQuoteOpen] = useState(false)
+  const [servicesConfig, setServicesConfig] = useState<any[]>([])
+  const [materialsConfig, setMaterialsConfig] = useState<any[]>([])
+  const [promotionsConfig, setPromotionsConfig] = useState<any[]>([])
+  const [selectedPromotionId, setSelectedPromotionId] = useState<string | null>(null)
+  const [editableMaterials, setEditableMaterials] = useState<any[]>([])
+  const [editableReviewDescription, setEditableReviewDescription] = useState('')
+  const [editableEstimatedHours, setEditableEstimatedHours] = useState<number | null>(null)
+  const [sendingQuote, setSendingQuote] = useState(false)
+
+  const resolveQuoteOrderId = (quote: any): number | null => {
+    if (!quote) return null
+
+    const parseCandidate = (candidate: any): number | null => {
+      if (candidate == null) return null
+      const asString = String(candidate).trim()
+      if (!asString) return null
+      if (!/^[0-9]+$/.test(asString)) return null
+      const numeric = Number(asString)
+      return Number.isFinite(numeric) && numeric > 0 ? numeric : null
+    }
+
+    let orderId = parseCandidate(quote.orderId)
+    if (orderId) return orderId
+
+    orderId = parseCandidate(quote.id)
+    if (orderId) return orderId
+
+    const feedback = parseJsonSafe(quote.feedback) ?? parseJsonSafe(quote.notasTecnico) ?? parseJsonSafe(quote.notastecnico) ?? quote.feedback
+    if (feedback && typeof feedback === 'object') {
+      const candidates = [
+        feedback.orderId,
+        feedback.order?.id,
+        feedback.order?.orderId,
+        feedback.order_id,
+        feedback.quote?.orderId,
+        feedback.quote?.id,
+        feedback.quote?.order_id,
+        feedback.quote?.reference,
+        feedback.id,
+      ]
+      for (const candidate of candidates) {
+        const parsed = parseCandidate(candidate)
+        if (parsed) return parsed
+      }
+    }
+
+    const normalizedQuoteClient = String(quote.client ?? quote.clienteNombre ?? quote.clientName ?? '').trim().toLowerCase()
+    const normalizedQuoteService = String(quote.service ?? quote.categoria ?? quote.descripcion ?? quote.description ?? '').trim().toLowerCase()
+    const normalizedQuoteDate = String(quote.date ?? quote.createdAt ?? quote.localDate ?? '').trim().toLowerCase()
+    const quoteTotal = Number(quote.total ?? quote.precio ?? quote.price ?? 0)
+
+    for (const order of safeOrders) {
+      const normalizedOrderClient = String(order.client ?? order.clienteNombre ?? order.clientName ?? '').trim().toLowerCase()
+      const normalizedOrderService = String(order.service ?? order.categoria ?? order.descripcion ?? order.description ?? '').trim().toLowerCase()
+      const normalizedOrderDate = String(order.date ?? order.localDate ?? order.createdAt ?? '').trim().toLowerCase()
+      const orderTotal = Number(order.precio ?? order.price ?? order.total ?? 0)
+
+      const clientMatches = normalizedOrderClient && normalizedQuoteClient && normalizedOrderClient === normalizedQuoteClient
+      const serviceMatches = normalizedOrderService && normalizedQuoteService && normalizedOrderService === normalizedQuoteService
+      const dateMatches = normalizedQuoteDate && normalizedOrderDate && normalizedOrderDate.includes(normalizedQuoteDate)
+      const totalMatches = quoteTotal > 0 && orderTotal > 0 && quoteTotal === orderTotal
+      const looseTotalMatches = quoteTotal > 0 && orderTotal > 0 && Math.abs(orderTotal - quoteTotal) / quoteTotal <= 0.05
+
+      if (clientMatches && serviceMatches && (dateMatches || totalMatches || looseTotalMatches)) {
+        const parsed = parseCandidate(order.id)
+        if (parsed) return parsed
+      }
+    }
+
+    return null
   }
+
+  const sendQuoteToClient = async (quote: any) => {
+    if (!quote?.id && quote?.orderId == null) return
+    if (!window.confirm('¿Estás seguro que deseas enviar esta cotización al cliente?')) return
+
+    const numericOrderId = resolveQuoteOrderId(quote)
+    if (!numericOrderId) {
+      window.alert('No es posible enviar esta cotización: falta el ID de orden válido.')
+      return
+    }
+
+    const matchedOrder = safeOrders.find((order) => Number(order.id) === numericOrderId)
+    if (!matchedOrder) {
+      window.alert('No es posible enviar esta cotización: no se encontró la orden asociada.')
+      return
+    }
+
+    try {
+      setSendingQuote(true)
+      const parsedFeedback = parseJsonSafe(quote.feedback) ?? parseJsonSafe(quote.notasTecnico) ?? parseJsonSafe(quote.notastecnico) ?? quote.feedback
+      const feedbackObject = parsedFeedback && typeof parsedFeedback === 'object' ? parsedFeedback : null
+      const finalFeedback = feedbackObject
+        ? {
+            ...feedbackObject,
+            quote: {
+              ...((feedbackObject as any).quote ?? {}),
+              status: 'Enviada',
+              sent: true,
+              sentAt: new Date().toISOString(),
+            },
+          }
+        : quote.feedback ?? quote.notasTecnico ?? quote.notastecnico ?? {}
+      const feedbackPayload = typeof finalFeedback === 'string' ? finalFeedback : JSON.stringify(finalFeedback)
+      const result = await updateOrdenStatus(String(matchedOrder.id), 'cotizado', {
+        feedback: feedbackPayload,
+        appendHistory: {
+          title: 'Cotización enviada',
+          details: 'La cotización fue enviada al cliente.',
+        },
+      })
+
+      if (!result?.success) {
+        window.alert(result?.error || 'No se pudo enviar la cotización al cliente.')
+        return
+      }
+
+      const updatedQuote = {
+        ...quote,
+        status: 'cotizado',
+        orderId: quote.orderId ?? numericOrderId,
+      }
+
+      setSelectedQuote((prev) => (prev?.id === quote.id ? updatedQuote : prev))
+      window.alert('Cotización enviada al cliente.')
+    } catch (error) {
+      console.error('Error sending quote to client:', error)
+      window.alert('Error enviando cotización al cliente.')
+    } finally {
+      setSendingQuote(false)
+    }
+  }
+
+  type AdditionalQuoteBlock = {
+    id: string
+    materialId: string
+    name: string
+    unit: string
+    unitPrice: number
+    quantity: number
+    markupPercent: number
+    ivaPercent: number
+  }
+  const [editableAdditionalBlocks, setEditableAdditionalBlocks] = useState<AdditionalQuoteBlock[]>([
+    {
+      id: 'additional-0',
+      materialId: '',
+      name: 'Concepto adicional',
+      unit: '',
+      unitPrice: 0,
+      quantity: 1,
+      markupPercent: 0,
+      ivaPercent: 0,
+    },
+  ])
+
+  useEffect(() => {
+    if (safeOrders.length > 0) {
+      setLocalQuotes((prev: any[]) =>
+        prev.map((quote: any) => {
+          if (quote.orderId) return quote
+          const resolved = resolveQuoteOrderId(quote)
+          return resolved ? { ...quote, orderId: resolved } : quote
+        }),
+      )
+    }
+  }, [safeOrders])
+
+  const resetAdditionalBlocks = () => {
+    setEditableAdditionalBlocks([
+      {
+        id: 'additional-0',
+        materialId: '',
+        name: 'Concepto adicional',
+        unit: '',
+        unitPrice: 0,
+        quantity: 1,
+        markupPercent: 0,
+        ivaPercent: 0,
+      },
+    ])
+  }
+  const styles: Record<string, string> = {
+    borrador: 'bg-muted/15 text-muted-foreground',
+    cotizado: 'bg-warning/15 text-warning',
+    recotizando: 'bg-violet-500/15 text-violet-600',
+    aceptada: 'bg-primary/15 text-primary',
+    pendiente_pago: 'bg-primary/15 text-primary',
+    pagada: 'bg-emerald-500/15 text-emerald-700',
+    rechazado: 'bg-destructive/15 text-destructive',
+  }
+
+  const quoteStatusFilterOptions = ['all', 'borrador', 'cotizado', 'recotizando', 'aceptada', 'pendiente_pago', 'pagada', 'rechazado'] as const
+  type QuoteStatusFilter = (typeof quoteStatusFilterOptions)[number]
+  const [quoteFilter, setQuoteFilter] = useState<QuoteStatusFilter>('all')
+
+  useEffect(() => {
+    let isMounted = true
+    const loadServices = async () => {
+      try {
+        const response = await fetch('/api/admin/settings')
+        const json = await response.json()
+        if (isMounted) {
+          setServicesConfig(Array.isArray(json?.settings?.services) ? json.settings.services : [])
+          setMaterialsConfig(Array.isArray(json?.settings?.materials) ? json.settings.materials : [])
+          setPromotionsConfig(Array.isArray(json?.settings?.promotions) ? json.settings.promotions : [])
+        }
+      } catch {
+        if (isMounted) {
+          setServicesConfig([])
+          setMaterialsConfig([])
+          setPromotionsConfig([])
+        }
+      }
+    }
+
+    loadServices()
+    return () => {
+      isMounted = false
+    }
+  }, [])
+
+  useEffect(() => {
+    if (selectedQuote) {
+      const feedback = parseFeedback(selectedQuote.feedback)
+      setEditableReviewDescription(
+        String(feedback?.details ?? feedback?.description ?? selectedQuote.notes ?? ''),
+      )
+      setEditableEstimatedHours(
+        typeof feedback?.estimatedHours === 'number'
+          ? feedback.estimatedHours
+          : Number(selectedQuote.estimatedHours ?? 0),
+      )
+    } else {
+      setEditableReviewDescription('')
+      setEditableEstimatedHours(null)
+      setSelectedPromotionId(null)
+    }
+  }, [selectedQuote])
+
+  const parseFeedback = (value: unknown) => {
+    if (!value) return null
+    if (typeof value === 'string') {
+      try {
+        return JSON.parse(value)
+      } catch {
+        return null
+      }
+    }
+    return value
+  }
+
+  const deriveQuoteState = (quote: any) => {
+    const rawStatus = String(quote?.status ?? quote?.estado ?? '').trim().toLowerCase()
+    const feedback = parseFeedback(quote?.feedback ?? quote?.notasTecnico ?? quote?.notastecnico ?? quote?.notas_tecnico ?? quote?.quote ?? null)
+    const quoteStatus = String(feedback?.quote?.status ?? '').trim().toLowerCase()
+    const sentFlag = feedback && typeof feedback === 'object' && (
+      feedback.sent === true ||
+      (feedback.quote?.sent === true) ||
+      /enviad/.test(String(quoteStatus)) ||
+      quoteStatus === 'cotizado'
+    )
+
+    if (['pendiente_pago', 'pendiente de pago', 'pendiente pago'].includes(rawStatus)) return 'pendiente_pago'
+    if (rawStatus === 'recotizando') return 'recotizando'
+    if (rawStatus === 'aceptada') return 'aceptada'
+    if (['pagada', 'pagado', 'finalizado', 'completado'].includes(rawStatus)) return 'pagada'
+    if (['rechazado', 'cancelada', 'cancelado'].includes(rawStatus)) return 'rechazado'
+    if (['enviada', 'enviado', 'cotizado'].includes(rawStatus)) return 'cotizado'
+    if (rawStatus === 'borrador' || rawStatus === 'draft' || rawStatus === '') {
+      if (sentFlag) return 'cotizado'
+      return 'borrador'
+    }
+    if (['enviada', 'enviado', 'cotizado'].includes(quoteStatus) || sentFlag) return 'cotizado'
+    return rawStatus || 'borrador'
+  }
+
+  const getQuoteStatusLabel = (status: string) => {
+    switch (status) {
+      case 'cotizado':
+        return 'Enviada'
+      case 'recotizando':
+        return 'Recotizada'
+      case 'aceptada':
+        return 'Aceptada'
+      case 'pendiente_pago':
+        return 'Pendiente de pago'
+      case 'pagada':
+        return 'Pagada'
+      case 'rechazado':
+        return 'Rechazada'
+      case 'borrador':
+      default:
+        return 'Borrador'
+    }
+  }
+
+  const quoteGroups = useMemo(() => {
+    const order = ['borrador', 'cotizado', 'recotizando', 'aceptada', 'pendiente_pago', 'pagada', 'rechazado']
+    return order.map((status) => ({
+      status,
+      items: localQuotes
+        .map((quote) => ({ quote, state: deriveQuoteState(quote) }))
+        .filter((item) => item.state === status)
+        .map((item) => item.quote)
+        .sort((a, b) => String(b.date ?? b.createdAt ?? '').localeCompare(String(a.date ?? a.createdAt ?? ''))),
+    }))
+  }, [localQuotes])
+
+  const quoteStatusSummary = (status: string, count: number) => {
+    return `${count} cotización${count === 1 ? '' : 'es'} ${getQuoteStatusLabel(status).toLowerCase()}`
+  }
+
+  const applyMarkup = (value: number, markupPercent: number) => value * (1 + markupPercent / 100)
+
+  const applyMarkupAndIva = (value: number, markupPercent: number, ivaPercent: number) => {
+    const subtotalWithMarkup = applyMarkup(value, markupPercent)
+    return subtotalWithMarkup * (1 + ivaPercent / 100)
+  }
+
+  const getServiceHourValue = (serviceName?: string) => {
+    if (!serviceName) return 0
+    const normalizedService = String(serviceName).trim().toLowerCase()
+    const matchedService = servicesConfig.find((service: any) => {
+      const name = String(service?.name ?? '').trim().toLowerCase()
+      const short = String(service?.short ?? '').trim().toLowerCase()
+      return name === normalizedService || short === normalizedService || name.includes(normalizedService) || short.includes(normalizedService)
+    })
+    return Number(matchedService?.hourValue ?? 0)
+  }
+
+  const findServiceConfigByQuote = (quote: any) => {
+    if (!quote) return null
+    const normalizedService = String(quote.service ?? '').trim().toLowerCase()
+    return servicesConfig.find((service: any) => {
+      const name = String(service?.name ?? '').trim().toLowerCase()
+      const short = String(service?.short ?? '').trim().toLowerCase()
+      return name === normalizedService || short === normalizedService || name.includes(normalizedService) || short.includes(normalizedService)
+    })
+  }
+
+  useEffect(() => {
+    if (!selectedQuote) return
+    const serviceConfig = findServiceConfigByQuote(selectedQuote)
+    const applicablePromotions = getApplicablePromotions(promotionsConfig, new Date(), serviceConfig?.id)
+    if (!selectedPromotionId && applicablePromotions.length > 0) {
+      setSelectedPromotionId(applicablePromotions[0].id)
+    }
+  }, [selectedQuote, promotionsConfig, servicesConfig, selectedPromotionId])
+
+  const resolveMaterialPrice = (item: any) => {
+    const itemId = String(item?.materialId ?? item?.id ?? item?.material ?? '').trim().toLowerCase()
+    const itemName = String(item?.name ?? item?.material ?? item?.id ?? '').trim().toLowerCase()
+
+    const matchedMaterial = materialsConfig.find((material: any) => {
+      const materialId = String(material?.id ?? '').trim().toLowerCase()
+      const materialName = String(material?.name ?? '').trim().toLowerCase()
+      return (
+        (itemId && materialId && (itemId === materialId || itemId.includes(materialId) || materialId.includes(itemId))) ||
+        (itemName && materialName && (itemName === materialName || itemName.includes(materialName) || materialName.includes(itemName)))
+      )
+    })
+
+    const explicitPrice = Number(item?.price ?? item?.unitPrice ?? item?.unit_price ?? item?.cost ?? 0)
+    const configPrice = Number(matchedMaterial?.price ?? 0)
+    const subtotal = Number(item?.subtotal ?? item?.total ?? 0)
+    const quantity = Number(item?.quantity ?? item?.qty ?? 1)
+    const basePrice = explicitPrice > 0 ? explicitPrice : configPrice > 0 ? configPrice : quantity > 0 && subtotal > 0 ? subtotal / quantity : 0
+    const markupPercent = Number(matchedMaterial?.markupPercent ?? 0)
+    const ivaPercent = Number(matchedMaterial?.ivaPercent ?? 0)
+
+    return applyMarkupAndIva(basePrice, markupPercent, ivaPercent)
+  }
+
+  const resolveMaterialNetPrice = (item: any) => {
+    const itemId = String(item?.materialId ?? item?.id ?? item?.material ?? '').trim().toLowerCase()
+    const itemName = String(item?.name ?? item?.material ?? item?.id ?? '').trim().toLowerCase()
+
+    const matchedMaterial = materialsConfig.find((material: any) => {
+      const materialId = String(material?.id ?? '').trim().toLowerCase()
+      const materialName = String(material?.name ?? '').trim().toLowerCase()
+      return (
+        (itemId && materialId && (itemId === materialId || itemId.includes(materialId) || materialId.includes(itemId))) ||
+        (itemName && materialName && (itemName === materialName || itemName.includes(materialName) || materialName.includes(itemName)))
+      )
+    })
+
+    const explicitPrice = Number(item?.price ?? item?.unitPrice ?? item?.unit_price ?? item?.cost ?? 0)
+    const configPrice = Number(matchedMaterial?.price ?? 0)
+    const subtotal = Number(item?.subtotal ?? item?.total ?? 0)
+    const quantity = Number(item?.quantity ?? item?.qty ?? 1)
+    const basePrice = explicitPrice > 0 ? explicitPrice : configPrice > 0 ? configPrice : quantity > 0 && subtotal > 0 ? subtotal / quantity : 0
+    const markupPercent = Number(matchedMaterial?.markupPercent ?? 0)
+
+    return applyMarkup(basePrice, markupPercent)
+  }
+
+  const resolveMaterialBasePrice = (item: any) => {
+    const itemId = String(item?.materialId ?? item?.id ?? item?.material ?? '').trim().toLowerCase()
+    const itemName = String(item?.name ?? item?.material ?? item?.id ?? '').trim().toLowerCase()
+
+    const matchedMaterial = materialsConfig.find((material: any) => {
+      const materialId = String(material?.id ?? '').trim().toLowerCase()
+      const materialName = String(material?.name ?? '').trim().toLowerCase()
+      return (
+        (itemId && materialId && (itemId === materialId || itemId.includes(materialId) || materialId.includes(itemId))) ||
+        (itemName && materialName && (itemName === materialName || itemName.includes(materialName) || materialName.includes(itemName)))
+      )
+    })
+
+    const explicitPrice = Number(item?.price ?? item?.unitPrice ?? item?.unit_price ?? item?.cost ?? 0)
+    const configPrice = Number(matchedMaterial?.price ?? 0)
+    const subtotal = Number(item?.subtotal ?? item?.total ?? 0)
+    const quantity = Number(item?.quantity ?? item?.qty ?? 1)
+    return explicitPrice > 0 ? explicitPrice : configPrice > 0 ? configPrice : quantity > 0 && subtotal > 0 ? subtotal / quantity : 0
+  }
+
+  const getServiceVisitValue = (serviceName?: string) => {
+    if (!serviceName) return 0
+    const normalizedService = String(serviceName).trim().toLowerCase()
+    const matchedService = servicesConfig.find((service: any) => {
+      const name = String(service?.name ?? '').trim().toLowerCase()
+      const short = String(service?.short ?? '').trim().toLowerCase()
+      return name === normalizedService || short === normalizedService || name.includes(normalizedService) || short.includes(normalizedService)
+    })
+    return Number(matchedService?.visitPrice ?? 0)
+  }
+
+  const getQuotePricing = (feedbackValue: unknown, serviceName?: string) => {
+    const feedback = parseFeedback(feedbackValue)
+    const directItems = Array.isArray(feedback?.materials?.items)
+      ? feedback.materials.items
+      : Array.isArray(feedback?.materials)
+        ? feedback.materials
+        : []
+
+    const materialEntries = directItems.length > 0
+      ? directItems
+      : (Array.isArray(feedback?.missingMaterials)
+          ? feedback.missingMaterials
+          : Array.isArray(feedback?.rejectionFeedback?.missingMaterials)
+            ? feedback.rejectionFeedback.missingMaterials
+            : [])
+
+    let materialsValue = 0
+    let materialsNetValue = 0
+    let materialsBaseValue = 0
+    let materialsIvaWeightedBase = 0
+    materialEntries.forEach((item: any) => {
+      const quantity = Number(item?.quantity ?? item?.qty ?? 1)
+      const unitPrice = resolveMaterialPrice(item)
+      const netUnitPrice = resolveMaterialNetPrice(item)
+      const baseUnitPrice = resolveMaterialBasePrice(item)
+      materialsValue += unitPrice * quantity
+      materialsNetValue += netUnitPrice * quantity
+      materialsBaseValue += baseUnitPrice * quantity
+      materialsIvaWeightedBase += netUnitPrice * quantity
+    })
+
+    const serviceConfig = servicesConfig.find((service: any) => {
+      const normalizedService = String(serviceName ?? '').trim().toLowerCase()
+      const name = String(service?.name ?? '').trim().toLowerCase()
+      const short = String(service?.short ?? '').trim().toLowerCase()
+      return name === normalizedService || short === normalizedService || name.includes(normalizedService) || short.includes(normalizedService)
+    })
+    const estimatedHours = Number(feedback?.estimatedHours ?? 0)
+    const hourValue = getServiceHourValue(serviceName)
+    const hoursNetValue = estimatedHours > 0
+      ? applyMarkup(estimatedHours * hourValue, Number(serviceConfig?.hourMarkupPercent ?? 0))
+      : 0
+    const hoursValue = estimatedHours > 0
+      ? applyMarkupAndIva(estimatedHours * hourValue, Number(serviceConfig?.hourMarkupPercent ?? 0), Number(serviceConfig?.hourIvaPercent ?? 0))
+      : 0
+    const visitPrice = getServiceVisitValue(serviceName)
+    const additionalVisitCount = estimatedHours > 8 ? Math.max(0, Math.floor((estimatedHours - 1) / 8)) : 0
+    const visitNetValue = applyMarkup(visitPrice, Number(serviceConfig?.markupPercent ?? 0)) * (1 + additionalVisitCount)
+    const visitValue = applyMarkupAndIva(visitPrice, Number(serviceConfig?.markupPercent ?? 0), Number(serviceConfig?.ivaPercent ?? 0)) * (1 + additionalVisitCount)
+    const visitBaseValue = visitPrice * (1 + additionalVisitCount)
+    const visitProfitValue = visitNetValue - visitBaseValue
+    const hoursBaseValue = estimatedHours * hourValue
+    const hoursProfitValue = hoursNetValue - hoursBaseValue
+    const materialsProfitValue = materialsNetValue - materialsBaseValue
+    const totalProfitValue = materialsProfitValue + hoursProfitValue + visitProfitValue
+    const materialsIvaValue = materialsValue - materialsNetValue
+    const materialsIvaPercent = materialsIvaWeightedBase > 0 ? (materialsIvaValue / materialsIvaWeightedBase) * 100 : 0
+    const hoursIvaValue = hoursValue - hoursNetValue
+    const hoursIvaPercent = Number(serviceConfig?.hourIvaPercent ?? 0)
+    const visitIvaValue = visitValue - visitNetValue
+    const visitIvaPercent = Number(serviceConfig?.ivaPercent ?? 0)
+    const totalIvaValue = materialsIvaValue + hoursIvaValue + visitIvaValue
+    const totalNetValue = materialsNetValue + hoursNetValue + visitNetValue
+    const totalIvaPercent = totalNetValue > 0 ? (totalIvaValue / totalNetValue) * 100 : 0
+
+    return {
+      materialsValue,
+      materialsNetValue,
+      materialsBaseValue,
+      materialsProfitValue,
+      materialsIvaValue,
+      materialsIvaPercent,
+      hoursValue,
+      hoursNetValue,
+      hoursBaseValue,
+      hoursProfitValue,
+      hoursIvaValue,
+      hoursIvaPercent,
+      visitPrice,
+      visitValue,
+      visitBaseValue,
+      visitNetValue,
+      visitProfitValue,
+      visitIvaValue,
+      visitIvaPercent,
+      totalProfitValue,
+      totalIvaValue,
+      totalIvaPercent,
+      additionalVisitCount,
+      estimatedHours,
+    }
+  }
+
+  const getQuoteDisplayTotal = (quote: any) => {
+    const pricing = getQuotePricing(quote?.feedback, quote?.service)
+    return pricing.materialsValue + pricing.visitValue + pricing.hoursValue
+  }
+
+  const getQuoteNetTotal = (quote: any) => {
+    const pricing = getQuotePricing(quote?.feedback, quote?.service)
+    return pricing.materialsNetValue + pricing.visitNetValue + pricing.hoursNetValue
+  }
+
+  const getQuoteMaterials = (feedbackValue: unknown) => {
+    const feedback = parseFeedback(feedbackValue)
+
+    const directItems = Array.isArray(feedback?.materials?.items)
+      ? feedback.materials.items
+      : Array.isArray(feedback?.materials)
+        ? feedback.materials
+        : []
+
+    if (directItems.length > 0) {
+      return directItems.map((item: any, index: number) => {
+        const quantity = Number(item?.quantity ?? item?.qty ?? 1)
+        const unitPrice = resolveMaterialPrice(item)
+        const unitNetPrice = resolveMaterialNetPrice(item)
+
+        return {
+          key: `${item?.id || item?.name || item?.material || index}`,
+          name: item?.name || item?.material || item?.id || `Material ${index + 1}`,
+          quantity,
+          price: unitPrice,
+          netPrice: unitNetPrice,
+        }
+      })
+    }
+
+    const missingMaterials = Array.isArray(feedback?.missingMaterials)
+      ? feedback.missingMaterials
+      : Array.isArray(feedback?.rejectionFeedback?.missingMaterials)
+        ? feedback.rejectionFeedback.missingMaterials
+        : []
+
+    if (missingMaterials.length > 0) {
+      return missingMaterials.map((item: any, index: number) => {
+        const quantity = Number(item?.quantity ?? item?.qty ?? 1)
+        const unitPrice = resolveMaterialPrice(item)
+        const unitNetPrice = resolveMaterialNetPrice(item)
+
+        return {
+          key: `${item?.id || item?.name || index}`,
+          name: item?.name || item?.material || item?.id || `Material ${index + 1}`,
+          quantity,
+          price: unitPrice,
+          netPrice: unitNetPrice,
+        }
+      })
+    }
+
+    return []
+  }
+
+  const renderClientPreviewModal = (quote: any) => {
+    const feedback = parseFeedback(quote.feedback)
+    const estimatedHoursForPreview = editableEstimatedHours != null
+      ? editableEstimatedHours
+      : Number(feedback?.estimatedHours ?? quote.estimatedHours ?? 0)
+    const feedbackForPricing = feedback
+      ? { ...feedback, estimatedHours: estimatedHoursForPreview, details: editableReviewDescription }
+      : { estimatedHours: estimatedHoursForPreview, details: editableReviewDescription }
+    const pricing = getQuotePricing(feedbackForPricing, quote.service)
+    const hourValue = getServiceHourValue(quote.service)
+    const serviceConfig = servicesConfig.find((service: any) => {
+      const normalizedService = String(quote.service ?? '').trim().toLowerCase()
+      const name = String(service?.name ?? '').trim().toLowerCase()
+      const short = String(service?.short ?? '').trim().toLowerCase()
+      return name === normalizedService || short === normalizedService || name.includes(normalizedService) || short.includes(normalizedService)
+    })
+    const hourValueWithMarkup = applyMarkup(hourValue, Number(serviceConfig?.hourMarkupPercent ?? 0))
+    const materials = editableMaterials.length > 0 ? editableMaterials : getQuoteMaterials(quote.feedback)
+    const additionalConceptTotals = editableAdditionalBlocks.reduce(
+      (acc, block) => {
+        const subtotal = (Number(block.unitPrice) || 0) * (Number(block.quantity) || 0)
+        const withMarkup = subtotal * (1 + (Number(block.markupPercent) || 0) / 100)
+        const iva = withMarkup * (Number(block.ivaPercent) || 0) / 100
+        return {
+          subtotal: acc.subtotal + subtotal,
+          withMarkup: acc.withMarkup + withMarkup,
+          iva: acc.iva + iva,
+          total: acc.total + withMarkup + iva,
+        }
+      },
+      { subtotal: 0, withMarkup: 0, iva: 0, total: 0 },
+    )
+    const totalNetValue = pricing.materialsNetValue + pricing.visitNetValue + pricing.hoursNetValue + additionalConceptTotals.withMarkup
+    const totalIvaBeforeDiscount = pricing.totalIvaValue + additionalConceptTotals.iva
+    const selectedPromotion = selectedPromotionId
+      ? promotionsConfig.find((promotion: any) => promotion.id === selectedPromotionId)
+      : null
+    const discountAmount = selectedPromotion
+      ? computeBestPromotionDiscount(totalNetValue, [selectedPromotion], new Date(), serviceConfig?.id).discount
+      : 0
+    const discountedNetValue = Math.max(0, totalNetValue - discountAmount)
+    const discountedIva = totalIvaBeforeDiscount
+    const totalGrossAfterDiscount = discountedNetValue + discountedIva
+
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/90 p-4 backdrop-blur-sm">
+        <div className="flex h-full max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-3xl border border-border bg-card shadow-2xl">
+<div className="flex items-center justify-between border-b border-border px-6 py-4 gap-3">
+              <div>
+                <p className="text-sm text-muted-foreground">Vista previa cliente</p>
+                <h3 className="text-xl font-semibold">{quote.client}</h3>
+                <p className="text-sm text-muted-foreground">{quote.service}</p>
+              </div>
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setPreviewQuoteOpen(false)}
+                  className="rounded-full border border-border bg-background px-3 py-2 text-sm font-medium"
+                >
+                  Cerrar
+                </button>
+                <button
+                  type="button"
+                  disabled={sendingQuote || String(quote.status ?? '').toLowerCase() === 'cotizado'}
+                  onClick={() => sendQuoteToClient(quote, {
+                    estimatedHours: estimatedHoursForPreview,
+                    details: editableReviewDescription,
+                    materials: editableMaterials.length > 0 ? editableMaterials : undefined,
+                    additionalBlocks: editableAdditionalBlocks,
+                    selectedPromotionId,
+                  })}
+                  className="rounded-full border border-primary bg-primary/5 px-3 py-2 text-sm font-medium text-primary transition hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {String(quote.status ?? '').toLowerCase() === 'cotizado'
+                    ? 'Enviada al cliente'
+                    : sendingQuote
+                      ? 'Enviando...'
+                      : 'Enviar a cliente'}
+                </button>
+              </div>
+          </div>
+
+          <div className="flex-1 overflow-y-auto px-6 py-6">
+            <div className="space-y-6">
+              <div className="rounded-2xl border border-border bg-background/70 p-5">
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Descripción de la revisión</p>
+                <p className="mt-3 text-sm leading-relaxed text-foreground">{editableReviewDescription || feedback?.details || feedback?.description || quote.notes || 'Sin descripción'}</p>
+              </div>
+
+              <div className="rounded-2xl border border-border bg-background/70 p-5">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Detalle</p>
+                  <span className="text-xs text-muted-foreground">{estimatedHoursForPreview} h x {formatCLP(hourValueWithMarkup)}</span>
+                </div>
+                <div className="mt-4 space-y-3 text-sm text-foreground">
+                  <div className="flex items-center justify-between rounded-2xl border border-border bg-card px-4 py-3">
+                    <span>Horas de trabajo</span>
+                    <span>{formatCLP(applyMarkupAndIva(estimatedHoursForPreview * hourValue, Number(serviceConfig?.hourMarkupPercent ?? 0), Number(serviceConfig?.hourIvaPercent ?? 0)))}</span>
+                  </div>
+                  <div className="flex items-center justify-between rounded-2xl border border-border bg-card px-4 py-3">
+                    <span>Materiales</span>
+                    <span>{formatCLP(pricing.materialsValue)}</span>
+                  </div>
+                  <div className="rounded-2xl border border-border bg-card p-4">
+                    <p className="text-sm font-semibold text-foreground">Materiales incluidos</p>
+                    <div className="mt-3 space-y-2">
+                      {materials.map((item: any) => (
+                        <div key={item.rowId ?? item.id ?? item.key} className="flex items-center justify-between rounded-xl border border-border bg-background px-3 py-3 text-sm">
+                          <div>
+                            <div className="font-medium text-foreground">{item.name}</div>
+                            <div className="text-xs text-muted-foreground">{formatCLP(item.price ?? item.netPrice ?? 0)} c/u</div>
+                          </div>
+                          <span className="text-muted-foreground">x {item.quantity}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="rounded-2xl border border-border bg-card p-4">
+                    <p className="text-sm font-semibold text-foreground">Conceptos adicionales</p>
+                    {editableAdditionalBlocks.length > 0 ? (
+                      <div className="mt-3 space-y-2">
+                        {editableAdditionalBlocks.map((block) => {
+                          const subtotal = (Number(block.unitPrice) || 0) * (Number(block.quantity) || 0)
+                          const withMarkup = subtotal * (1 + (Number(block.markupPercent) || 0) / 100)
+                          const ivaAmount = withMarkup * (Number(block.ivaPercent) || 0) / 100
+                          const blockTotal = withMarkup + ivaAmount
+
+                          return (
+                            <div key={block.id} className="rounded-xl border border-border bg-background px-3 py-3 text-sm">
+                              <div className="flex items-center justify-between gap-3">
+                                <div>
+                                  <div className="font-medium text-foreground">{block.name || 'Concepto adicional'}</div>
+                                  <div className="text-xs text-muted-foreground">{formatCLP(block.unitPrice)} c/u × {block.quantity}</div>
+                                </div>
+                                <div className="text-right">
+                                  <div className="text-xs text-muted-foreground">Total</div>
+                                  <div className="font-semibold text-foreground">{formatCLP(blockTotal)}</div>
+                                </div>
+                              </div>
+                              <div className="mt-2 grid gap-2 sm:grid-cols-3 text-xs text-muted-foreground">
+                                <span>Ganancia: {formatCLP(withMarkup - subtotal)}</span>
+                                <span>IVA: {formatCLP(ivaAmount)}</span>
+                                <span>Subtotal: {formatCLP(subtotal)}</span>
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    ) : (
+                      <p className="mt-3 text-sm text-muted-foreground">No hay conceptos adicionales agregados.</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-border bg-background/70 p-5">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Promociones</p>
+                <div className="mt-3 space-y-3 text-sm text-foreground">
+                  {selectedPromotion ? (
+                    <div className="rounded-xl border border-border bg-card p-3">
+                      <p className="font-semibold text-foreground">Promoción aplicada</p>
+                      <p className="mt-1 text-xs text-muted-foreground">{selectedPromotion.description || 'Sin descripción'}</p>
+                      <p className="mt-3 text-xs text-muted-foreground">Descuento: {formatCLP(discountAmount)}</p>
+                    </div>
+                  ) : applicablePromotions.length > 0 ? (
+                    <div className="rounded-xl border border-border bg-card p-3">
+                      <p className="font-semibold text-foreground">Promociones activas</p>
+                      <p className="mt-1 text-xs text-muted-foreground">Se encontraron promociones vigentes para este servicio.</p>
+                      <ul className="mt-3 space-y-2">
+                        {applicablePromotions.map((promotion: any) => (
+                          <li key={promotion.id} className="rounded-lg border border-border bg-background px-3 py-2">
+                            <div className="font-medium text-foreground">{promotion.name || 'Promoción sin nombre'}</div>
+                            <div className="text-xs text-muted-foreground">{promotion.description || 'Sin descripción'}</div>
+                            <div className="mt-1 text-xs text-muted-foreground">Descuento: {formatCLP(totalNetValue - applyPromotionToAmount(totalNetValue, promotion))}</div>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : (
+                    <div className="rounded-xl border border-border bg-card p-3">
+                      <p className="font-semibold text-foreground">No hay promociones activas</p>
+                      <p className="mt-1 text-xs text-muted-foreground">No hay promociones vigentes para este servicio en la fecha actual.</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div className="rounded-2xl border border-border bg-background/70 p-5">
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Total neto</p>
+                  <p className="mt-3 text-2xl font-bold text-primary">{formatCLP(pricing.materialsNetValue + pricing.visitNetValue + pricing.hoursNetValue + additionalConceptTotals.withMarkup)}</p>
+                </div>
+                <div className="rounded-2xl border border-border bg-background/70 p-5">
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Total IVA</p>
+                  <p className="mt-3 text-2xl font-bold text-primary">{formatCLP(pricing.totalIvaValue + additionalConceptTotals.iva)}</p>
+                </div>
+                <div className="rounded-2xl border border-border bg-background/70 p-5">
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Total cotización</p>
+                  <p className="mt-3 text-2xl font-bold text-primary">{formatCLP(discountAmount > 0 ? totalGrossAfterDiscount : pricing.materialsValue + pricing.visitValue + pricing.hoursValue + additionalConceptTotals.total)}</p>
+                  {discountAmount > 0 ? (
+                    <p className="mt-2 text-sm text-secondary">Incluye descuento de {formatCLP(discountAmount)} aplicado sobre el total antes de IVA.</p>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  const renderSelectedQuoteModal = () => {
+    if (!selectedQuote) return null
+
+    const feedback = parseFeedback(selectedQuote.feedback)
+    const estimatedHours = editableEstimatedHours != null
+      ? editableEstimatedHours
+      : Number(feedback?.estimatedHours ?? selectedQuote.estimatedHours ?? 0)
+    const feedbackForPricing = feedback
+      ? { ...feedback, estimatedHours }
+      : { estimatedHours }
+    const pricing = getQuotePricing(feedbackForPricing, selectedQuote.service)
+    const serviceConfig = servicesConfig.find((service: any) => {
+      const normalizedService = String(selectedQuote.service ?? '').trim().toLowerCase()
+      const name = String(service?.name ?? '').trim().toLowerCase()
+      const short = String(service?.short ?? '').trim().toLowerCase()
+      return name === normalizedService || short === normalizedService || name.includes(normalizedService) || short.includes(normalizedService)
+    })
+    const hourValue = getServiceHourValue(selectedQuote.service)
+    const hourValueWithMarkup = applyMarkup(hourValue, Number(serviceConfig?.hourMarkupPercent ?? 0))
+    const estimatedAmount = Number(estimatedHours) > 0
+      ? applyMarkupAndIva(Number(estimatedHours) * hourValue, Number(serviceConfig?.hourMarkupPercent ?? 0), Number(serviceConfig?.hourIvaPercent ?? 0))
+      : 0
+
+    const additionalConceptTotals = editableAdditionalBlocks.reduce(
+      (acc, block) => {
+        const subtotal = (Number(block.unitPrice) || 0) * (Number(block.quantity) || 0)
+        const withMarkup = subtotal * (1 + (Number(block.markupPercent) || 0) / 100)
+        const iva = withMarkup * (Number(block.ivaPercent) || 0) / 100
+        return {
+          subtotal: acc.subtotal + subtotal,
+          withMarkup: acc.withMarkup + withMarkup,
+          iva: acc.iva + iva,
+          total: acc.total + withMarkup + iva,
+        }
+      },
+      { subtotal: 0, withMarkup: 0, iva: 0, total: 0 },
+    )
+    const totalNetValue = pricing.materialsNetValue + pricing.visitNetValue + pricing.hoursNetValue + additionalConceptTotals.withMarkup
+    const totalIvaBeforeDiscount = pricing.totalIvaValue + additionalConceptTotals.iva
+    const applicablePromotions = getApplicablePromotions(promotionsConfig, new Date(), serviceConfig?.id)
+    const selectedPromotion = selectedPromotionId
+      ? promotionsConfig.find((promotion: any) => promotion.id === selectedPromotionId)
+      : null
+    const discountAmount = selectedPromotion
+      ? computeBestPromotionDiscount(totalNetValue, [selectedPromotion], new Date(), serviceConfig?.id).discount
+      : 0
+    const discountedNetValue = Math.max(0, totalNetValue - discountAmount)
+    const discountedIva = totalIvaBeforeDiscount
+    const totalGrossAfterDiscount = discountedNetValue + discountedIva
+    const additionalConceptProfit = additionalConceptTotals.withMarkup - additionalConceptTotals.subtotal
+
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/90 p-4 backdrop-blur-sm">
+        <div className="flex h-full max-h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-3xl border border-border bg-card shadow-2xl">
+          <div className="flex items-center justify-between border-b border-border px-6 py-4">
+            <div>
+              <p className="text-sm text-muted-foreground">{selectedQuote.id} · {selectedQuote.date}</p>
+              <h3 className="text-xl font-semibold">{selectedQuote.client}</h3>
+              <p className="text-sm text-muted-foreground">{selectedQuote.service}</p>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className={cn('rounded-full px-2.5 py-1 text-xs font-medium', styles[selectedQuote.status])}>
+                {selectedQuote.status}
+              </span>
+              <button
+                type="button"
+                onClick={() => setSelectedQuote(null)}
+                className="rounded-full border border-border bg-background px-3 py-2 text-sm font-medium"
+              >
+                Cerrar
+              </button>
+            </div>
+          </div>
+
+          <div className="flex-1 overflow-y-auto px-6 py-6">
+            <div className="grid gap-6 lg:grid-cols-[1.3fr_0.7fr]">
+              <div className="space-y-5">
+                <div className="rounded-2xl border border-border bg-background/70 p-5">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Descripción de la revisión</p>
+                    <span className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary">Editable</span>
+                  </div>
+                  <textarea
+                    value={editableReviewDescription}
+                    onChange={(event) => setEditableReviewDescription(event.target.value)}
+                    className="mt-3 min-h-[120px] w-full rounded-xl border border-border bg-background px-3 py-3 text-sm leading-relaxed text-foreground outline-none transition focus:border-primary/70 focus:ring-2 focus:ring-primary/10"
+                    placeholder="Edita la descripción de la revisión aquí"
+                  />
+                </div>
+
+                <div className="rounded-2xl border border-border bg-background/70 p-5">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Materiales colocados en la revisión</p>
+                  {(() => {
+                    const materials = getQuoteMaterials(selectedQuote.feedback)
+                    return materials.length > 0 ? (
+                      <ul className="mt-3 space-y-2">
+                        {materials.map((item: any) => (
+                          <li key={item.key} className="flex items-center justify-between rounded-xl border border-border bg-card px-3 py-3 text-sm">
+                            <div>
+                              <div className="text-foreground">{item.name}</div>
+                              {Number(item.netPrice || 0) > 0 ? (
+                                <div className="text-xs text-muted-foreground">{formatCLP(Number(item.netPrice))} c/u</div>
+                              ) : null}
+                            </div>
+                            {typeof item.quantity === 'number' ? <span className="text-muted-foreground">x{item.quantity}</span> : null}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="mt-3 text-sm text-muted-foreground">No se registraron materiales en esta revisión.</p>
+                    )
+                  })()}
+                </div>
+
+                <div className="rounded-2xl border border-border bg-background/70 p-5">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Horas de trabajo</p>
+                  <div className="mt-3 rounded-xl border border-border bg-card px-3 py-3 text-sm">
+                    <div className="grid gap-3 sm:grid-cols-[1fr_auto] items-center">
+                      <div>
+                        <div className="text-foreground">Valor por hora</div>
+                        <div className="text-xs text-muted-foreground">{formatCLP(hourValueWithMarkup)} c/u</div>
+                      </div>
+                      <label className="flex flex-col gap-2 text-xs text-muted-foreground">
+                        <span>Cantidad de horas</span>
+                        <input
+                          type="number"
+                          min="0"
+                          value={estimatedHours ?? 0}
+                          onChange={(event) => setEditableEstimatedHours(Number(event.target.value))}
+                          className="w-full rounded-lg border border-border bg-background px-2 py-1 text-sm text-foreground"
+                        />
+                      </label>
+                    </div>
+                  </div>
+                </div>
+                <div className="rounded-2xl border border-border bg-background/70 p-5">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Movilización</p>
+                  <div className="mt-3 flex items-center justify-between rounded-xl border border-border bg-card px-3 py-3 text-sm">
+                    <div>
+                      <div className="text-foreground">Valor por movilización</div>
+                      <div className="text-xs text-muted-foreground">{formatCLP(pricing.visitValue)} c/u</div>
+                    </div>
+                    <span className="text-muted-foreground">x {pricing.additionalVisitCount > 0 ? pricing.additionalVisitCount + 1 : 1} movilización{pricing.additionalVisitCount + 1 > 1 ? 'es' : ''}</span>
+                  </div>
+                </div>
+                {editableAdditionalBlocks.map((block, index) => {
+                  const subtotal = (Number(block.unitPrice) || 0) * (Number(block.quantity) || 0)
+                  const withMarkup = subtotal * (1 + (Number(block.markupPercent) || 0) / 100)
+                  const ivaAmount = withMarkup * (Number(block.ivaPercent) || 0) / 100
+                  const blockTotal = withMarkup + ivaAmount
+
+                  return (
+                    <div key={block.id} className="rounded-2xl border border-border bg-background/70 p-5">
+                      <div className="flex items-start justify-between gap-3">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                          {block.name || `Concepto adicional ${index + 1}`}
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => setEditableAdditionalBlocks((prev) => prev.filter((item) => item.id !== block.id))}
+                          className="rounded-full border border-destructive/20 bg-destructive/5 px-3 py-1 text-xs font-medium text-destructive transition hover:bg-destructive/10"
+                        >
+                          Eliminar
+                        </button>
+                      </div>
+                      <div className="mt-3 rounded-xl border border-border bg-card px-3 py-3 text-sm">
+                        <div className="grid gap-3 lg:grid-cols-[1fr_auto]">
+                          <div className="min-w-0 space-y-3">
+                            <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+                              <span>Material</span>
+                              <select
+                                value={block.materialId ?? ''}
+                                onChange={(event) => {
+                                  const selectedId = event.target.value
+                                  const matchedMaterial = materialsConfig.find((material) => String(material.id) === selectedId)
+                                  setEditableAdditionalBlocks((prev) =>
+                                    prev.map((item) =>
+                                      item.id === block.id
+                                        ? {
+                                            ...item,
+                                            materialId: selectedId,
+                                            name: matchedMaterial?.name ?? item.name,
+                                            unit: matchedMaterial?.unit ?? item.unit ?? '',
+                                            unitPrice: Number(matchedMaterial?.price ?? item.unitPrice ?? 0),
+                                            markupPercent: Number(matchedMaterial?.markupPercent ?? item.markupPercent ?? 0),
+                                            ivaPercent: Number(matchedMaterial?.ivaPercent ?? item.ivaPercent ?? 0),
+                                          }
+                                        : item,
+                                    ),
+                                  )
+                                }}
+                                className="w-full rounded-lg border border-border bg-background px-2 py-1 text-sm text-foreground"
+                              >
+                                <option value="">Seleccionar material</option>
+                                {materialsConfig.map((material) => (
+                                  <option key={material.id} value={material.id}>
+                                    {material.name}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                            <input
+                              value={block.name}
+                              onChange={(event) =>
+                                setEditableAdditionalBlocks((prev) =>
+                                  prev.map((item) =>
+                                    item.id === block.id ? { ...item, name: event.target.value } : item,
+                                  ),
+                                )
+                              }
+                              className="w-full rounded-lg border border-border bg-background px-2 py-1 text-sm text-foreground"
+                              placeholder="Nombre del bloque"
+                            />
+                            <div className="grid gap-2 sm:grid-cols-2 text-xs text-muted-foreground">
+                              <label className="flex items-center gap-1">
+                                <span>Precio</span>
+                                <input
+                                  type="number"
+                                  value={block.unitPrice}
+                                  min="0"
+                                  onChange={(event) =>
+                                    setEditableAdditionalBlocks((prev) =>
+                                      prev.map((item) =>
+                                        item.id === block.id
+                                          ? ({ ...item, unitPrice: Number(event.target.value) } as AdditionalQuoteBlock)
+                                          : item,
+                                      ),
+                                    )
+                                  }
+                                  className="w-full rounded-lg border border-border bg-background px-2 py-1 text-xs text-foreground"
+                                />
+                              </label>
+                              <label className="flex items-center gap-1">
+                                <span>Cant.</span>
+                                <input
+                                  type="number"
+                                  value={block.quantity}
+                                  min="0"
+                                  onChange={(event) =>
+                                    setEditableAdditionalBlocks((prev) =>
+                                      prev.map((item) =>
+                                        item.id === block.id
+                                          ? ({ ...item, quantity: Number(event.target.value) } as AdditionalQuoteBlock)
+                                          : item,
+                                      ),
+                                    )
+                                  }
+                                  className="w-full rounded-lg border border-border bg-background px-2 py-1 text-xs text-foreground"
+                                />
+                              </label>
+                              <label className="flex items-center gap-1">
+                                <span>Ganancia %</span>
+                                <input
+                                  type="number"
+                                  value={block.markupPercent}
+                                  min="0"
+                                  onChange={(event) =>
+                                    setEditableAdditionalBlocks((prev) =>
+                                      prev.map((item) =>
+                                        item.id === block.id
+                                          ? ({ ...item, markupPercent: Number(event.target.value) } as AdditionalQuoteBlock)
+                                          : item,
+                                      ),
+                                    )
+                                  }
+                                  className="w-full rounded-lg border border-border bg-background px-2 py-1 text-xs text-foreground"
+                                />
+                              </label>
+                              <label className="flex items-center gap-1">
+                                <span>IVA %</span>
+                                <input
+                                  type="number"
+                                  value={block.ivaPercent}
+                                  min="0"
+                                  onChange={(event) =>
+                                    setEditableAdditionalBlocks((prev) =>
+                                      prev.map((item) =>
+                                        item.id === block.id
+                                          ? ({ ...item, ivaPercent: Number(event.target.value) } as AdditionalQuoteBlock)
+                                          : item,
+                                      ),
+                                    )
+                                  }
+                                  className="w-full rounded-lg border border-border bg-background px-2 py-1 text-xs text-foreground"
+                                />
+                              </label>
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <div className="text-xs text-muted-foreground">Subtotal</div>
+                            <div className="mt-1 text-base font-semibold text-foreground">{formatCLP(subtotal)}</div>
+                            <div className="mt-2 space-y-1 text-xs text-muted-foreground">
+                              <p>Ganancia: {formatCLP(withMarkup - subtotal)}</p>
+                              <p>IVA: {formatCLP(ivaAmount)}</p>
+                            </div>
+                            <div className="mt-2 text-xs text-muted-foreground">Total</div>
+                            <div className="text-lg font-semibold text-foreground">{formatCLP(blockTotal)}</div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
+                <div className="rounded-2xl border border-border bg-background/70 p-5">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Promociones</p>
+                  <div className="mt-3 space-y-3">
+                    {applicablePromotions.length > 0 ? (
+                      <div className="rounded-xl border border-border bg-card p-3 text-sm">
+                        <p className="font-semibold text-foreground">Promociones activas</p>
+                        <p className="mt-1 text-xs text-muted-foreground">Estas promociones se aplican hoy al servicio seleccionado.</p>
+                        <ul className="mt-3 space-y-2">
+                          {applicablePromotions.map((promotion: any) => (
+                            <li key={promotion.id} className="rounded-lg border border-border bg-background px-3 py-2">
+                              <div className="font-medium text-foreground">{promotion.name || 'Promoción sin nombre'}</div>
+                              <div className="text-xs text-muted-foreground">{promotion.description || 'Sin descripción'}</div>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    ) : (
+                      <div className="rounded-xl border border-border bg-card p-3 text-sm">
+                        <p className="font-semibold text-foreground">No hay promociones activas</p>
+                        <p className="mt-1 text-xs text-muted-foreground">Las promociones configuradas no coinciden con este servicio o no están vigentes.</p>
+                      </div>
+                    )}
+                    <label className="block text-sm text-foreground">
+                      <span className="text-xs text-muted-foreground">Seleccionar promoción</span>
+                      <select
+                        value={selectedPromotionId ?? ''}
+                        onChange={(event) => setSelectedPromotionId(event.target.value || null)}
+                        className="mt-2 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
+                      >
+                        <option value="">Ninguna promoción</option>
+                        {applicablePromotions.map((promotion: any) => (
+                          <option key={promotion.id} value={promotion.id}>
+                            {promotion.name || 'Promoción sin nombre'}{promotion.applyTo === 'service' ? ' (Servicio)' : ' (Total)'}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    {selectedPromotionId ? (
+                      <div className="rounded-xl border border-border bg-card p-3 text-sm">
+                        {(() => {
+                          const promo = promotionsConfig.find((promotion: any) => promotion.id === selectedPromotionId)
+                          return promo ? (
+                            <>
+                              <p className="font-semibold text-foreground">{promo.name || 'Promoción seleccionada'}</p>
+                              <p className="mt-1 text-xs text-muted-foreground">{promo.description || 'Sin descripción'}</p>
+                              <p className="mt-3 text-xs text-muted-foreground">Descuento: {formatCLP(totalNetValue - applyPromotionToAmount(totalNetValue, promo))}</p>
+                            </>
+                          ) : (
+                            <p className="text-sm text-muted-foreground">Promoción no encontrada.</p>
+                          )
+                        })()}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">No se ha seleccionado ninguna promoción.</p>
+                    )}
+                  </div>
+                </div>
+                <div className="mt-3 flex justify-between">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setEditableAdditionalBlocks((prev) => [
+                        ...prev,
+                        {
+                          id: `additional-${prev.length}`,
+                          materialId: '',
+                          name: 'Concepto adicional',
+                          unit: '',
+                          unitPrice: 0,
+                          quantity: 1,
+                          markupPercent: 0,
+                          ivaPercent: 0,
+                        },
+                      ])
+                    }
+                    className="inline-flex items-center rounded-full border border-border bg-card px-4 py-2 text-sm font-medium text-foreground transition hover:bg-accent"
+                  >
+                    Agregar concepto
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPreviewQuoteOpen(true)}
+                    className="inline-flex items-center rounded-full border border-primary bg-primary/5 px-4 py-2 text-sm font-medium text-primary transition hover:bg-primary/10"
+                  >
+                    Vista previa cliente
+                  </button>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <div className="rounded-2xl border border-border bg-background/70 p-5">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Movilización</p>
+                  <p className="mt-3 font-display text-2xl font-bold text-primary">{formatCLP(pricing.visitValue)}</p>
+                  {pricing.additionalVisitCount > 0 ? (
+                    <p className="mt-3 text-xs text-muted-foreground">Incluye {pricing.additionalVisitCount} visita adicional{pricing.additionalVisitCount > 1 ? 's' : ''} por exceder las 8 horas.</p>
+                  ) : (
+                    <p className="mt-3 text-xs text-muted-foreground">1 visita base</p>
+                  )}
+                </div>
+                <div className="rounded-2xl border border-border bg-background/70 p-5">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Valor de materiales</p>
+                  <p className="mt-3 font-display text-2xl font-bold text-primary">{formatCLP(pricing.materialsValue)}</p>
+                </div>
+                <div className="rounded-2xl border border-border bg-background/70 p-5">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Monto estimado por horas</p>
+                  <p className="mt-3 font-display text-2xl font-bold text-primary">{formatCLP(estimatedAmount)}</p>
+                </div>
+                <div className="rounded-2xl border border-border bg-background/70 p-5">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Conceptos adicionales</p>
+                  <p className="mt-3 font-display text-2xl font-bold text-primary">{formatCLP(additionalConceptTotals.total)}</p>
+                  <p className="mt-3 text-xs text-muted-foreground">
+                    {editableAdditionalBlocks.length} concepto adicional{editableAdditionalBlocks.length === 1 ? '' : 's'}
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-border bg-background/70 p-5">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Ganancia estimada</p>
+                  <p className="mt-3 font-display text-2xl font-bold text-primary">{formatCLP(pricing.totalProfitValue + additionalConceptProfit)}</p>
+                  <div className="mt-3 space-y-1 text-xs text-muted-foreground">
+                    <p>Materiales: {formatCLP(pricing.materialsProfitValue)}</p>
+                    <p>Horas: {formatCLP(pricing.hoursProfitValue)}</p>
+                    <p>Visita: {formatCLP(pricing.visitProfitValue)}</p>
+                    <p>Adicionales: {formatCLP(additionalConceptProfit)}</p>
+                  </div>
+                </div>
+                <div className="rounded-2xl border border-border bg-background/70 p-5">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Total neto</p>
+                  <p className="mt-3 font-display text-2xl font-bold text-primary">{formatCLP(pricing.materialsNetValue + pricing.visitNetValue + pricing.hoursNetValue + additionalConceptTotals.withMarkup)}</p>
+                </div>
+                <div className="rounded-2xl border border-border bg-background/70 p-5">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Total IVA</p>
+                  <p className="mt-3 font-display text-2xl font-bold text-primary">{formatCLP(pricing.totalIvaValue + additionalConceptTotals.iva)}</p>
+                  <div className="mt-3 space-y-1 text-xs text-muted-foreground">
+                    <p>Total IVA %: {(((pricing.totalIvaValue + additionalConceptTotals.iva) / (pricing.materialsNetValue + pricing.visitNetValue + pricing.hoursNetValue + additionalConceptTotals.withMarkup)) * 100 || 0).toFixed(1)}%</p>
+                    <p>IVA materiales: {formatCLP(pricing.materialsIvaValue)} ({pricing.materialsIvaPercent.toFixed(1)}%)</p>
+                    <p>IVA horas: {formatCLP(pricing.hoursIvaValue)} ({pricing.hoursIvaPercent.toFixed(1)}%)</p>
+                    <p>IVA visita: {formatCLP(pricing.visitIvaValue)} ({pricing.visitIvaPercent.toFixed(1)}%)</p>
+                    <p>IVA adicionales: {formatCLP(additionalConceptTotals.iva)} ({editableAdditionalBlocks.length > 0 ? `${(additionalConceptTotals.iva > 0 && additionalConceptTotals.withMarkup > 0 ? ((additionalConceptTotals.iva / additionalConceptTotals.withMarkup) * 100).toFixed(1) : '0')}%` : '0%'})</p>
+                  </div>
+                </div>
+                <div className="rounded-2xl border border-border bg-background/70 p-5">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Total bruto con IVA</p>
+                  <p className="mt-3 font-display text-2xl font-bold text-primary">{formatCLP(pricing.materialsValue + pricing.visitValue + pricing.hoursValue + additionalConceptTotals.total)}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  const visibleQuoteGroups = useMemo(
+    () => quoteGroups.filter((group) => quoteFilter === 'all' || group.status === quoteFilter),
+    [quoteGroups, quoteFilter],
+  )
+
+  const hasVisibleQuotes = visibleQuoteGroups.some((group) => group.items.length > 0)
+
   return (
     <div>
       <PageTitle title="Cotizaciones" subtitle="Propuestas enviadas a clientes" />
-      <div className="grid gap-3 md:grid-cols-2">
-        {safeQuotes.map((q) => (
-          <div key={q.id} className="rounded-2xl border border-border bg-card p-4">
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="text-xs text-muted-foreground">{q.id} · {q.date}</p>
-                <p className="mt-0.5 font-semibold">{q.client}</p>
-                <p className="text-sm text-muted-foreground">{q.service}</p>
-              </div>
-              <span className={cn('rounded-full px-2.5 py-1 text-xs font-medium', styles[q.status])}>
-                {q.status}
-              </span>
-            </div>
-            <div className="mt-3 flex items-center justify-between border-t border-border pt-3">
-              <span className="text-xs text-muted-foreground">Total</span>
-              <span className="font-display text-lg font-bold text-primary">
-                {formatCLP(q.total)}
-              </span>
-            </div>
-          </div>
-        ))}
+      <div className="mb-4 flex flex-wrap gap-2">
+        {quoteStatusFilterOptions.map((value) => {
+          const count = value === 'all'
+            ? quoteGroups.reduce((sum, group) => sum + group.items.length, 0)
+            : quoteGroups.find((group) => group.status === value)?.items.length ?? 0
+
+          return (
+            <button
+              key={value}
+              type="button"
+              onClick={() => setQuoteFilter(value)}
+              className={cn(
+                'rounded-full px-3 py-1.5 text-sm font-medium transition',
+                quoteFilter === value
+                  ? 'border border-primary/30 bg-primary text-primary-foreground shadow-sm'
+                  : 'border border-border bg-card text-muted-foreground hover:bg-secondary/10',
+              )}
+            >
+              {value === 'all'
+                ? `Todas (${count})`
+                : `${getQuoteStatusLabel(value)} (${count})`}
+            </button>
+          )
+        })}
       </div>
+      <div className="space-y-6">
+        {!hasVisibleQuotes ? (
+          <div className="rounded-2xl border border-border bg-card p-8 text-center">
+            <ClipboardList className="mx-auto size-12 text-muted-foreground" />
+            <p className="mt-4 text-sm text-muted-foreground">No hay cotizaciones con esos filtros</p>
+          </div>
+        ) : (
+          visibleQuoteGroups.map((group) => (
+            <div key={group.status}>
+              <div className="mb-3 flex items-center justify-between rounded-2xl border border-border bg-background/80 px-4 py-3">
+                <div>
+                  <p className="text-sm font-semibold">{getQuoteStatusLabel(group.status)}</p>
+                  <p className="text-xs text-muted-foreground">{quoteStatusSummary(group.status, group.items.length)}</p>
+                </div>
+                <span className={cn('rounded-full px-3 py-1 text-xs font-semibold', styles[group.status])}>
+                  {getQuoteStatusLabel(group.status)}
+                </span>
+              </div>
+
+              {group.items.length > 0 ? (
+                <div className="grid gap-3 md:grid-cols-2">
+                  {group.items.map((q) => {
+                    const feedback = parseFeedback(q.feedback)
+                    const reviewDescription = feedback?.details || feedback?.description || q.notes || 'Sin descripción de revisión.'
+                    const quoteState = deriveQuoteState(q)
+
+                    return (
+                      <div
+                        key={q.id}
+                        className="cursor-pointer rounded-2xl border border-border bg-card p-4 transition-colors hover:border-primary/60 hover:bg-accent/10"
+                        onClick={() => setSelectedQuote(q)}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="text-xs text-muted-foreground">{q.id} · {q.date}</p>
+                            <p className="mt-0.5 font-semibold">{q.client}</p>
+                            <p className="text-sm text-muted-foreground">{q.service}</p>
+                          </div>
+                          <span className={cn('rounded-full px-2.5 py-1 text-xs font-medium', styles[quoteState])}>
+                            {getQuoteStatusLabel(quoteState)}
+                          </span>
+                        </div>
+
+                        <div className="mt-3 space-y-3 border-t border-border pt-3 text-sm text-muted-foreground">
+                          <div>
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Descripción de la revisión</p>
+                            <p className="mt-1 text-sm leading-relaxed text-foreground">{reviewDescription}</p>
+                          </div>
+                        </div>
+
+                        <div className="mt-3 flex items-center justify-between border-t border-border pt-3">
+                          <span className="text-xs text-muted-foreground">Toca para abrir en pantalla completa</span>
+                          <span className="font-display text-lg font-bold text-primary">
+                            {formatCLP(getQuoteDisplayTotal(q))}
+                          </span>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              ) : (
+                <div className="rounded-2xl border border-border bg-background/70 p-4 text-sm text-muted-foreground">
+                  No hay cotizaciones en esta categoría.
+                </div>
+              )}
+            </div>
+          ))
+        )}
+      </div>
+
+      {renderSelectedQuoteModal()}
+      {previewQuoteOpen && selectedQuote ? renderClientPreviewModal(selectedQuote) : null}
     </div>
   )
 }
@@ -2280,6 +4273,13 @@ function Reportes({ orders = [] }: { orders?: any[] }) {
     return ['finalizado', 'pagada', 'pagado', 'completado'].includes(status)
   })
 
+  const pendingOrders = visibleOrders.filter((o) => {
+    const status = String(o.estado || o.status || '').toLowerCase()
+    return ['pendiente', 'en camino', 'en proceso', 'cotizando', 'cotizado', 'recotizando', 'aceptada', 'pendiente_pago', 'por_validar', 'en revision', 'en revisión', 'en_reclamo'].includes(status)
+  })
+
+  const canceledOrders = visibleOrders.filter((o) => normalizeBillingStatus(o.estado || o.status) === 'cancelada')
+
   const totalRevenue = paidOrders.reduce((sum, o) => {
     const amount = Number(o.precio ?? o.price ?? o.total ?? o.amount ?? 0)
     return sum + (Number.isNaN(amount) ? 0 : amount)
@@ -2289,27 +4289,54 @@ function Reportes({ orders = [] }: { orders?: any[] }) {
   const nonCanceledOrders = visibleOrders.filter((o) => normalizeBillingStatus(o.estado || o.status) !== 'cancelada')
   const totalOrders = nonCanceledOrders.length
   const paymentRate = totalOrders ? Math.round((completedJobs / totalOrders) * 100) : 0
-  const averageTicket = completedJobs ? formatCLP(totalRevenue / completedJobs) : formatCLP(0)
+  const averageTicket = completedJobs ? totalRevenue / completedJobs : 0
+  const openOrders = pendingOrders.length
 
   const stats = [
-    { label: 'Ingresos pagados', value: formatCLP(totalRevenue) },
-    { label: 'Trabajos facturados', value: String(completedJobs) },
-    { label: 'Ticket promedio', value: averageTicket },
-    { label: 'Tasa de pago', value: `${paymentRate}%` },
+    { label: 'Ingresos pagados', value: formatCLP(totalRevenue), hint: 'Cobranza cerrada' },
+    { label: 'Trabajos completados', value: String(completedJobs), hint: 'Órdenes cerradas' },
+    { label: 'Órdenes abiertas', value: String(openOrders), hint: 'En curso o pendientes' },
+    { label: 'Ticket promedio', value: formatCLP(averageTicket), hint: 'Promedio por trabajo' },
+    { label: 'Tasa de pago', value: `${paymentRate}%`, hint: 'Cobertura de pagos' },
+    { label: 'Canceladas', value: String(canceledOrders.length), hint: 'Órdenes anuladas' },
   ]
 
+  const bottlenecks = useMemo(() => {
+    const buckets = visibleOrders.reduce<Record<string, { count: number; ageDays: number[] }>>((acc, order) => {
+      const state = String(order.estado || order.status || 'pendiente').toLowerCase().trim()
+      const bucket = getStatusBucket(state)
+      const existing = acc[bucket] ?? { count: 0, ageDays: [] }
+      const date = parseOrderDate(order)
+      const ageDays = date ? Math.max(0, Math.floor((Date.now() - date.getTime()) / (1000 * 60 * 60 * 24))) : 0
+      existing.count += 1
+      existing.ageDays.push(ageDays)
+      acc[bucket] = existing
+      return acc
+    }, {})
+
+    return Object.entries(buckets)
+      .filter(([bucket]) => !['Cerradas', 'Canceladas', 'Otros'].includes(bucket))
+      .map(([bucket, data]) => ({
+        bucket,
+        count: data.count,
+        averageAge: Math.round(data.ageDays.reduce((sum, age) => sum + age, 0) / Math.max(1, data.ageDays.length)),
+      }))
+      .sort((a, b) => b.count - a.count || b.averageAge - a.averageAge)
+  }, [visibleOrders])
+
   return (
-    <div>
-      <PageTitle title="Reportes y estadísticas" subtitle="Rendimiento operativo del período" />
-      <div className="mb-4 flex flex-wrap gap-2">
+    <div className="space-y-4">
+      <PageTitle title="Reportes y estadísticas" subtitle="Vista ejecutiva del rendimiento del negocio" />
+
+      <div className="flex flex-wrap gap-2">
         {(['all', 'pagada', 'pendiente', 'cancelada'] as const).map((value) => (
           <button
             key={value}
             type="button"
             onClick={() => setReportFilter(value)}
             className={cn(
-              'rounded-full px-3 py-1.5 text-sm font-medium',
-              reportFilter === value ? 'bg-primary text-primary-foreground' : 'bg-card text-muted-foreground',
+              'rounded-full px-3 py-1.5 text-sm font-medium transition-colors',
+              reportFilter === value ? 'bg-primary text-primary-foreground' : 'bg-card text-muted-foreground hover:bg-muted',
             )}
           >
             {value === 'all'
@@ -2322,26 +4349,57 @@ function Reportes({ orders = [] }: { orders?: any[] }) {
           </button>
         ))}
       </div>
-      <div className="grid gap-4 lg:grid-cols-4">
+
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {stats.map((item) => (
           <div key={item.label} className="rounded-2xl border border-border bg-card p-5">
-            <p className="text-xs text-muted-foreground">{item.label}</p>
+            <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{item.label}</p>
             <p className="mt-2 font-display text-2xl font-bold text-foreground">{item.value}</p>
+            <p className="mt-1 text-sm text-muted-foreground">{item.hint}</p>
           </div>
         ))}
       </div>
-      <div className="mt-4 grid gap-4 lg:grid-cols-3">
-        <div className="rounded-2xl border border-border bg-card p-5 lg:col-span-2">
-          <p className="mb-4 font-semibold">Evolución de ingresos</p>
+
+      <div className="grid gap-4 lg:grid-cols-[1.3fr_0.7fr]">
+        <div className="rounded-2xl border border-border bg-card p-5">
+          <div className="mb-4 flex items-center justify-between">
+            <p className="font-semibold">Evolución de ingresos</p>
+            <span className="text-sm text-muted-foreground">Último periodo</span>
+          </div>
           <RevenueChart orders={visibleOrders} />
         </div>
-        <div className="rounded-2xl border border-border bg-card p-5">
-          <p className="mb-4 font-semibold">Trabajos por tipo</p>
-          <JobsChart orders={visibleOrders} />
+        <div className="space-y-4">
+          <div className="rounded-2xl border border-border bg-card p-5">
+            <p className="mb-4 font-semibold">Trabajos por tipo</p>
+            <JobsChart orders={visibleOrders} />
+          </div>
+          <div className="rounded-2xl border border-border bg-card p-5">
+            <p className="mb-4 font-semibold">Estados del flujo</p>
+            <SegmentsChart orders={visibleOrders} />
+          </div>
         </div>
-        <div className="rounded-2xl border border-border bg-card p-5">
-          <p className="mb-4 font-semibold">Órdenes por estado</p>
-          <SegmentsChart orders={visibleOrders} />
+      </div>
+
+      <div className="rounded-2xl border border-border bg-card p-5">
+        <div className="mb-4 flex items-center justify-between">
+          <p className="font-semibold">Cuellos de botella</p>
+          <span className="text-sm text-muted-foreground">Estados que más acumulan trabajo</span>
+        </div>
+        <div className="space-y-3">
+          {bottlenecks.map((item) => (
+            <div key={item.bucket} className="flex items-center justify-between rounded-xl border border-border/70 bg-background/60 px-3 py-3">
+              <div>
+                <p className="font-medium text-foreground">{item.bucket}</p>
+                <p className="text-sm text-muted-foreground">
+                  {item.count === 1 ? '1 pedido acumulado' : `${item.count} pedidos acumulados`}
+                </p>
+              </div>
+              <div className="text-right">
+                <p className="font-semibold text-foreground">{item.averageAge} días</p>
+                <p className="text-xs text-muted-foreground">promedio abierto</p>
+              </div>
+            </div>
+          ))}
         </div>
       </div>
     </div>
@@ -2355,9 +4413,9 @@ function Configuraciones({ initialTab }: { initialTab?: 'agenda' | 'servicios' |
   const [message, setMessage] = useState('')
   const [editingChecklistServiceId, setEditingChecklistServiceId] = useState<string | null>(null)
   const [configTab, setConfigTab] = useState<'agenda' | 'servicios' | 'checklists' | 'materiales' | 'promociones'>(initialTab ?? 'agenda')
-  const [materialCategory, setMaterialCategory] = useState('Todos')
+  const [materialCategory, setMaterialCategory] = useState<string>('Todos')
   const [showGlobalMarkup, setShowGlobalMarkup] = useState(false)
-  const [globalMarkup, setGlobalMarkup] = useState('0')
+  const [globalMarkup, setGlobalMarkup] = useState<string>('0')
 
   const loadSettings = async () => {
     setLoading(true)
@@ -2443,7 +4501,7 @@ function Configuraciones({ initialTab }: { initialTab?: 'agenda' | 'servicios' |
   const addService = () => {
     setSettings({
       ...settings,
-      services: [...(settings.services ?? []), { id: `nuevo-${Date.now()}`, name: 'Nuevo servicio', short: 'Nuevo', description: '', from: 0, visitPrice: 12000, hours: 1, markupPercent: 0, ivaPercent: 19, emergency: false }],
+      services: [...(settings.services ?? []), { id: `nuevo-${Date.now()}`, name: 'Nuevo servicio', short: 'Nuevo', description: '', from: 0, visitPrice: 12000, hourValue: 0, hourMarkupPercent: 0, hourIvaPercent: 19, markupPercent: 0, ivaPercent: 19, emergency: false, visibleToClient: true }],
     })
   }
 
@@ -2496,7 +4554,9 @@ function Configuraciones({ initialTab }: { initialTab?: 'agenda' | 'servicios' |
     setSettings({ ...settings, materials })
   }
 
-  const materialCategories = Array.from(new Set((settings?.materials ?? []).map((material: any) => material.category || 'Otros'))).sort()
+  const materialCategories: string[] = Array.from(
+    new Set<string>((settings?.materials ?? []).map((material: any) => String(material.category || 'Otros'))),
+  ).sort()
   const visibleMaterials = (settings?.materials ?? [])
     .map((material: any, index: number) => ({ material, index }))
     .filter(({ material }: { material: any }) => materialCategory === 'Todos' || (material.category || 'Otros') === materialCategory)
@@ -2551,6 +4611,44 @@ function Configuraciones({ initialTab }: { initialTab?: 'agenda' | 'servicios' |
     checklists[serviceId] = items
     setSettings({ ...settings, checklists })
   }
+
+  const toNumber = (value: unknown) => {
+    const parsed = Number(value)
+    return Number.isFinite(parsed) ? parsed : 0
+  }
+
+  type ServiceTotalsItem = {
+    subtotalWithoutIva: number
+    totalService: number
+    hourSubtotalWithoutIva: number
+    totalHour: number
+  }
+
+  const serviceTotals: ServiceTotalsItem[] = (settings.services ?? []).map((service: any) => {
+    const base = toNumber(service?.from)
+    const visit = toNumber(service?.visitPrice)
+    const subtotal = base + visit
+    const markupPercent = toNumber(service?.markupPercent)
+    const ivaPercent = toNumber(service?.ivaPercent)
+
+    const subtotalWithMarkup = subtotal * (1 + markupPercent / 100)
+    const totalService = subtotalWithMarkup * (1 + ivaPercent / 100)
+    const subtotalWithoutIva = subtotalWithMarkup
+
+    const hourValue = toNumber(service?.hourValue)
+    const hourMarkupPercent = toNumber(service?.hourMarkupPercent)
+    const hourIvaPercent = toNumber(service?.hourIvaPercent)
+    const hourSubtotalWithMarkup = hourValue * (1 + hourMarkupPercent / 100)
+    const totalHour = hourSubtotalWithMarkup * (1 + hourIvaPercent / 100)
+    const hourSubtotalWithoutIva = hourSubtotalWithMarkup
+
+    return { subtotalWithoutIva, totalService, hourSubtotalWithoutIva, totalHour }
+  })
+
+  const totalServicesValue = serviceTotals.reduce<number>((sum: number, item: ServiceTotalsItem) => sum + item.totalService, 0)
+  const totalServicesSubtotalValue = serviceTotals.reduce<number>((sum: number, item: ServiceTotalsItem) => sum + item.subtotalWithoutIva, 0)
+  const totalHoursValue = serviceTotals.reduce<number>((sum: number, item: ServiceTotalsItem) => sum + item.totalHour, 0)
+  const totalHoursSubtotalValue = serviceTotals.reduce<number>((sum: number, item: ServiceTotalsItem) => sum + item.hourSubtotalWithoutIva, 0)
 
   return (
     <div className="space-y-6">
@@ -2661,14 +4759,42 @@ function Configuraciones({ initialTab }: { initialTab?: 'agenda' | 'servicios' |
             <div className="mb-4 flex items-center justify-between">
               <div>
                 <h2 className="font-display text-lg font-semibold">Servicios</h2>
-                <p className="text-sm text-muted-foreground">Modifica nombre, precio base y descripción de cada servicio.</p>
+                <p className="text-sm text-muted-foreground">Modifica nombre, precio base, valor hora y sus propios porcentajes de ganancia e IVA.</p>
               </div>
               <button onClick={addService} className="inline-flex items-center gap-2 rounded-full border border-border px-3 py-1.5 text-sm">
                 <Plus className="size-4" /> Agregar
               </button>
             </div>
+            <div className="mb-4 rounded-xl border border-border bg-background/70 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold">Totales dinámicos</p>
+                  <p className="text-sm text-muted-foreground">Se recalculan automáticamente con los valores que ingreses en cada servicio.</p>
+                </div>
+                <div className="flex flex-wrap gap-3 text-sm">
+                  <div className="rounded-lg border border-border bg-card px-3 py-2">
+                    <span className="block text-xs text-muted-foreground">Subtotal servicios</span>
+                    <span className="font-semibold">{formatCLP(totalServicesSubtotalValue)}</span>
+                  </div>
+                  <div className="rounded-lg border border-border bg-card px-3 py-2">
+                    <span className="block text-xs text-muted-foreground">Total servicios</span>
+                    <span className="font-semibold">{formatCLP(totalServicesValue)}</span>
+                  </div>
+                  <div className="rounded-lg border border-border bg-card px-3 py-2">
+                    <span className="block text-xs text-muted-foreground">Subtotal valor hora</span>
+                    <span className="font-semibold">{formatCLP(totalHoursSubtotalValue)}</span>
+                  </div>
+                  <div className="rounded-lg border border-border bg-card px-3 py-2">
+                    <span className="block text-xs text-muted-foreground">Total valor hora</span>
+                    <span className="font-semibold">{formatCLP(totalHoursValue)}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
             <div className="space-y-3">
-              {(settings.services ?? []).map((service: any, index: number) => (
+              {(settings.services ?? []).map((service: any, index: number) => {
+                const totals = serviceTotals[index] ?? { totalService: 0, totalHour: 0 }
+                return (
                 <div key={service.id || index} className="rounded-xl border border-border p-3">
                   <div className="mb-2 flex items-center justify-between gap-2">
                     <input value={service.name || ''} onChange={(e) => updateServiceField(index, 'name', e.target.value)} className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm" />
@@ -2688,8 +4814,8 @@ function Configuraciones({ initialTab }: { initialTab?: 'agenda' | 'servicios' |
                       <input type="number" value={service.visitPrice ?? 12000} onChange={(e) => updateServiceField(index, 'visitPrice', Number(e.target.value))} className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm" />
                     </label>
                     <label className="text-sm">
-                      <span className="mb-1 block text-muted-foreground">Horas</span>
-                      <input type="number" step="0.5" value={service.hours ?? 1} onChange={(e) => updateServiceField(index, 'hours', Number(e.target.value))} className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm" />
+                      <span className="mb-1 block text-muted-foreground">Valor hora</span>
+                      <input type="number" step="0.1" value={service.hourValue ?? 0} onChange={(e) => updateServiceField(index, 'hourValue', Number(e.target.value))} className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm" />
                     </label>
                     <label className="text-sm">
                       <span className="mb-1 block text-muted-foreground">Ganancia %</span>
@@ -2701,17 +4827,52 @@ function Configuraciones({ initialTab }: { initialTab?: 'agenda' | 'servicios' |
                       <span className="mb-1 block text-muted-foreground">IVA %</span>
                       <input type="number" step="0.1" value={service.ivaPercent ?? 19} onChange={(e) => updateServiceField(index, 'ivaPercent', Number(e.target.value))} className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm" />
                     </label>
+                    <label className="text-sm">
+                      <span className="mb-1 block text-muted-foreground">Ganancia % hora</span>
+                      <input type="number" value={service.hourMarkupPercent ?? 0} onChange={(e) => updateServiceField(index, 'hourMarkupPercent', Number(e.target.value))} className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm" />
+                    </label>
+                  </div>
+                  <div className="mt-3 grid gap-3 md:grid-cols-2">
+                    <label className="text-sm">
+                      <span className="mb-1 block text-muted-foreground">IVA % hora</span>
+                      <input type="number" step="0.1" value={service.hourIvaPercent ?? 19} onChange={(e) => updateServiceField(index, 'hourIvaPercent', Number(e.target.value))} className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm" />
+                    </label>
                   </div>
                   <label className="mt-3 block text-sm">
                     <span className="mb-1 block text-muted-foreground">Descripción</span>
                     <textarea value={service.description || ''} onChange={(e) => updateServiceField(index, 'description', e.target.value)} className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm" rows={2} />
                   </label>
-                  <label className="mt-3 flex items-center gap-2 text-sm text-muted-foreground">
-                    <input type="checkbox" checked={!!service.emergency} onChange={(e) => updateServiceField(index, 'emergency', e.target.checked)} />
-                    Disponible como emergencia
-                  </label>
+                  <div className="mt-3 grid gap-3 rounded-lg border border-border/70 bg-background/70 p-3 md:grid-cols-4">
+                    <div className="rounded-lg border border-border bg-card px-3 py-2">
+                      <div className="text-xs text-muted-foreground">Subtotal servicio</div>
+                      <div className="text-sm font-semibold">{formatCLP(totals.subtotalWithoutIva)}</div>
+                    </div>
+                    <div className="rounded-lg border border-border bg-card px-3 py-2">
+                      <div className="text-xs text-muted-foreground">Total servicio</div>
+                      <div className="text-sm font-semibold">{formatCLP(totals.totalService)}</div>
+                    </div>
+                    <div className="rounded-lg border border-border bg-card px-3 py-2">
+                      <div className="text-xs text-muted-foreground">Subtotal valor hora</div>
+                      <div className="text-sm font-semibold">{formatCLP(totals.hourSubtotalWithoutIva)}</div>
+                    </div>
+                    <div className="rounded-lg border border-border bg-card px-3 py-2">
+                      <div className="text-xs text-muted-foreground">Total valor hora</div>
+                      <div className="text-sm font-semibold">{formatCLP(totals.totalHour)}</div>
+                    </div>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-4">
+                    <label className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <input type="checkbox" checked={!!service.emergency} onChange={(e) => updateServiceField(index, 'emergency', e.target.checked)} />
+                      Disponible como emergencia
+                    </label>
+                    <label className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <input type="checkbox" checked={service.visibleToClient !== false} onChange={(e) => updateServiceField(index, 'visibleToClient', e.target.checked)} />
+                      Visible para clientes
+                    </label>
+                  </div>
                 </div>
-              ))}
+                )
+              })}
             </div>
           </section>
           )}
@@ -3129,26 +5290,50 @@ function ChecklistEditor({
   onClose: () => void
 }) {
   const isOrderEditor = serviceId === '__order__'
-  const [localItems, setLocalItems] = useState(() => (
+  type ChecklistItemEvidence = {
+    photosBefore: boolean
+    photosAfter: boolean
+    measurements: boolean
+  }
+  type EvidenceField = keyof ChecklistItemEvidence
+  type ChecklistItem = {
+    id: string
+    text: string
+    required: boolean
+    type: string
+    materials: any[]
+    evidence: ChecklistItemEvidence
+  }
+  type SimpleChecklistItem = {
+    id: string
+    text: string
+    required: boolean
+  }
+  type ServiceMaterialItem = {
+    id: string
+    name: string
+    quantity: number
+  }
+  const [localItems, setLocalItems] = useState<ChecklistItem[]>(() => (
     isOrderEditor
       ? []
       : (items ?? []).map((it: any, idx: number) => ({
           id: typeof it === 'string' ? `item-${serviceId}-${idx}` : String(it.id ?? `item-${serviceId}-${idx}`),
-          text: typeof it === 'string' ? it : it.text || '',
-          required: typeof it === 'string' ? false : !!it.required,
-          type: typeof it === 'string' ? 'comprobacion' : it.type || 'comprobacion',
-          materials: Array.isArray(it.materials) ? it.materials : [],
-          evidence: (typeof it === 'string' ? undefined : it.evidence) || { photosBefore: false, photosAfter: false, measurements: false },
+          text: typeof it === 'string' ? String(it) : String(it?.text || ''),
+          required: typeof it === 'string' ? false : Boolean(it?.required),
+          type: typeof it === 'string' ? 'comprobacion' : String(it?.type || 'comprobacion'),
+          materials: Array.isArray(it?.materials) ? it.materials : [],
+          evidence: (typeof it === 'string' ? undefined : it?.evidence) || { photosBefore: false, photosAfter: false, measurements: false },
         }))
   ))
-  const [localOrderItems, setLocalOrderItems] = useState(() => (
+  const [localOrderItems, setLocalOrderItems] = useState<SimpleChecklistItem[]>(() => (
     (orderItems ?? []).map((it: any, idx: number) => ({
       id: String(it.id ?? `order-${serviceId}-${idx}`),
       text: it.text || '',
       required: !!it.required,
     }))
   ))
-  const [localBlockedItems, setLocalBlockedItems] = useState(() => (
+  const [localBlockedItems, setLocalBlockedItems] = useState<SimpleChecklistItem[]>(() => (
     (blockedItems ?? []).map((it: any, idx: number) => ({
       id: String(it.id ?? `blocked-${serviceId}-${idx}`),
       text: it.text || '',
@@ -3158,16 +5343,24 @@ function ChecklistEditor({
   const modalContentRef = useRef<HTMLDivElement | null>(null)
   const [newItemText, setNewItemText] = useState('')
   const [addingMaterialFor, setAddingMaterialFor] = useState<string | null>(null)
-  const [selectedMaterialId, setSelectedMaterialId] = useState<string | null>(null)
+  const [selectedMaterialId, setSelectedMaterialId] = useState<string>('')
   const [selectedQuantity, setSelectedQuantity] = useState<number>(1)
-  const [localServiceMaterials, setLocalServiceMaterials] = useState(() => (Array.isArray(serviceMaterials) ? serviceMaterials.map((m: any) => ({ ...m })) : []))
-  const [localServiceChecklist, setLocalServiceChecklist] = useState(() => (
-    (serviceChecklistItems ?? []).map((it: any, idx: number) => ({ id: String(it.id ?? `svc-${idx}`), text: it.text || it || '', required: !!it.required }))
+  const [localServiceMaterials, setLocalServiceMaterials] = useState<ServiceMaterialItem[]>(() => (Array.isArray(serviceMaterials) ? serviceMaterials.map((m: any) => ({ id: String(m.id ?? ''), name: String(m.name ?? ''), quantity: Number(m.quantity ?? 0) })) : []))
+  const [localServiceChecklist, setLocalServiceChecklist] = useState<SimpleChecklistItem[]>(() => (
+    (serviceChecklistItems ?? []).map((it: any, idx: number) => ({
+      id: String(it?.id ?? `svc-${idx}`),
+      text: String(it?.text ?? it ?? ''),
+      required: Boolean(it?.required),
+    }))
   ))
 
-  const serviceChecklistPreview = (!isOrderEditor ? (items ?? []).map((it: any, idx: number) => ({
-    id: typeof it === 'string' ? `default-${serviceId}-${idx}` : String(it.id ?? `default-${serviceId}-${idx}`),
-    text: typeof it === 'string' ? it : it.text || '',
+  const serviceChecklistPreview: ChecklistItem[] = (!isOrderEditor ? (items ?? []).map((it: any, idx: number) => ({
+    id: typeof it === 'string' ? `default-${serviceId}-${idx}` : String(it?.id ?? `default-${serviceId}-${idx}`),
+    text: typeof it === 'string' ? String(it) : String(it?.text || ''),
+    required: typeof it === 'string' ? false : Boolean(it?.required),
+    type: typeof it === 'string' ? 'comprobacion' : String(it?.type || 'comprobacion'),
+    materials: Array.isArray(it?.materials) ? it.materials : [],
+    evidence: (typeof it === 'string' ? undefined : it?.evidence) || { photosBefore: false, photosAfter: false, measurements: false },
   })) : [])
 
   useEffect(() => {
@@ -3178,10 +5371,10 @@ function ChecklistEditor({
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
 
-  const addItem = (text?: string) => {
-    const nextText = text !== undefined ? text : newItemText.trim()
-    setLocalItems([
-      ...localItems,
+  const addItem = () => {
+    const nextText = newItemText.trim()
+    setLocalItems((prev) => [
+      ...prev,
       {
         id: `item-${Date.now()}`,
         text: nextText || 'Nueva verificación',
@@ -3196,73 +5389,70 @@ function ChecklistEditor({
     }
   }
 
-  const addServiceChecklistItem = (text?: string) => {
-    const nextText = text !== undefined ? text : 'Nuevo item'
-    setLocalServiceChecklist([
-      ...localServiceChecklist,
-      { id: `svc-${Date.now()}`, text: nextText, required: true },
+  const addServiceChecklistItem = () => {
+    setLocalServiceChecklist((prev) => [
+      ...prev,
+      { id: `svc-${Date.now()}`, text: 'Nuevo item', required: true },
     ])
   }
 
   const updateServiceChecklistItem = (id: string, text: string) => {
-    setLocalServiceChecklist(localServiceChecklist.map((it) => (it.id === id ? { ...it, text } : it)))
+    setLocalServiceChecklist((prev) => prev.map((it) => (it.id === id ? { ...it, text } : it)))
   }
 
   const removeServiceChecklistItem = (id: string) => {
-    setLocalServiceChecklist(localServiceChecklist.filter((it) => it.id !== id))
+    setLocalServiceChecklist((prev) => prev.filter((it) => it.id !== id))
   }
 
   const updateItem = (id: string, text: string) => {
-    setLocalItems(localItems.map((item) => (item.id === id ? { ...item, text } : item)))
+    setLocalItems((prev) => prev.map((item) => (item.id === id ? { ...item, text } : item)))
   }
 
   const updateItemType = (id: string, type: string) => {
-    setLocalItems(localItems.map((item) => (item.id === id ? { ...item, type } : item)))
+    setLocalItems((prev) => prev.map((item) => (item.id === id ? { ...item, type } : item)))
   }
 
   const removeItem = (id: string) => {
-    setLocalItems(localItems.filter((item) => item.id !== id))
+    setLocalItems((prev) => prev.filter((item) => item.id !== id))
   }
 
   const toggleRequired = (id: string) => {
-    setLocalItems(localItems.map((item) => (item.id === id ? { ...item, required: !item.required } : item)))
+    setLocalItems((prev) => prev.map((item) => (item.id === id ? { ...item, required: !item.required } : item)))
   }
 
-  const addOrderItem = (text?: string) => {
-    const nextText = text !== undefined ? text : 'Nuevo item de orden'
-    setLocalOrderItems([
-      ...localOrderItems,
-      { id: `order-item-${Date.now()}`, text: nextText, required: true },
+  const addOrderItem = () => {
+    setLocalOrderItems((prev) => [
+      ...prev,
+      { id: `order-item-${Date.now()}`, text: 'Nuevo item de orden', required: true },
     ])
   }
 
   const updateOrderItem = (id: string, text: string) => {
-    setLocalOrderItems(localOrderItems.map((item) => (item.id === id ? { ...item, text } : item)))
+    setLocalOrderItems((prev) => prev.map((item) => (item.id === id ? { ...item, text } : item)))
   }
 
   const removeOrderItem = (id: string) => {
-    setLocalOrderItems(localOrderItems.filter((item) => item.id !== id))
+    setLocalOrderItems((prev) => prev.filter((item) => item.id !== id))
   }
 
-  const addBlockedItem = (text?: string) => {
-    const nextText = text !== undefined ? text : 'Nuevo item para solicitudes bloqueadas'
-    setLocalBlockedItems([
-      ...localBlockedItems,
-      { id: `blocked-item-${Date.now()}`, text: nextText, required: true },
+  const addBlockedItem = () => {
+    setLocalBlockedItems((prev) => [
+      ...prev,
+      { id: `blocked-item-${Date.now()}`, text: 'Nuevo item para solicitudes bloqueadas', required: true },
     ])
   }
 
   const updateBlockedItem = (id: string, text: string) => {
-    setLocalBlockedItems(localBlockedItems.map((item) => (item.id === id ? { ...item, text } : item)))
+    setLocalBlockedItems((prev) => prev.map((item) => (item.id === id ? { ...item, text } : item)))
   }
 
   const removeBlockedItem = (id: string) => {
-    setLocalBlockedItems(localBlockedItems.filter((item) => item.id !== id))
+    setLocalBlockedItems((prev) => prev.filter((item) => item.id !== id))
   }
 
   const startAddMaterial = (itemId: string) => {
     setAddingMaterialFor(itemId)
-    setSelectedMaterialId(settingsMaterials?.[0]?.id ?? null)
+    setSelectedMaterialId(String(settingsMaterials?.[0]?.id ?? ''))
     setSelectedQuantity(1)
   }
 
@@ -3270,7 +5460,7 @@ function ChecklistEditor({
     if (!addingMaterialFor || !selectedMaterialId) return
     const mat = settingsMaterials.find((m: any) => String(m.id) === String(selectedMaterialId))
     if (!mat) return
-    setLocalItems(localItems.map((it) => {
+    setLocalItems((prev) => prev.map((it) => {
       if (it.id !== addingMaterialFor) return it
       const existing = Array.isArray(it.materials) ? [...it.materials] : []
       existing.push({ id: mat.id, name: mat.name, quantity: Number(selectedQuantity) || 1 })
@@ -3280,7 +5470,7 @@ function ChecklistEditor({
   }
 
   const startAddServiceMaterial = () => {
-    setSelectedMaterialId(settingsMaterials?.[0]?.id ?? null)
+    setSelectedMaterialId(String(settingsMaterials?.[0]?.id ?? ''))
     setSelectedQuantity(1)
   }
 
@@ -3288,19 +5478,19 @@ function ChecklistEditor({
     if (!selectedMaterialId) return
     const mat = settingsMaterials.find((m: any) => String(m.id) === String(selectedMaterialId))
     if (!mat) return
-    setLocalServiceMaterials([...localServiceMaterials, { id: mat.id, name: mat.name, quantity: Number(selectedQuantity) || 1 }])
+    setLocalServiceMaterials((prev) => [...prev, { id: mat.id, name: mat.name, quantity: Number(selectedQuantity) || 1 }])
   }
 
   const updateServiceMaterialQty = (index: number, qty: number) => {
-    setLocalServiceMaterials(localServiceMaterials.map((m: any, i: number) => (i === index ? { ...m, quantity: Number(qty) || 0 } : m)))
+    setLocalServiceMaterials((prev) => prev.map((m: any, i: number) => (i === index ? { ...m, quantity: Number(qty) || 0 } : m)))
   }
 
   const removeServiceMaterial = (index: number) => {
-    setLocalServiceMaterials(localServiceMaterials.filter((_: any, i: number) => i !== index))
+    setLocalServiceMaterials((prev) => prev.filter((_: any, i: number) => i !== index))
   }
 
   const updateMaterialQuantity = (itemId: string, materialIndex: number, qty: number) => {
-    setLocalItems(localItems.map((it) => {
+    setLocalItems((prev) => prev.map((it) => {
       if (it.id !== itemId) return it
       const materials = (it.materials ?? []).map((m: any, idx: number) => idx === materialIndex ? { ...m, quantity: Number(qty) || 0 } : m)
       return { ...it, materials }
@@ -3308,17 +5498,18 @@ function ChecklistEditor({
   }
 
   const removeMaterialFromItem = (itemId: string, materialIndex: number) => {
-    setLocalItems(localItems.map((it) => {
+    setLocalItems((prev) => prev.map((it) => {
       if (it.id !== itemId) return it
       const materials = (it.materials ?? []).filter((_: any, idx: number) => idx !== materialIndex)
       return { ...it, materials }
     }))
   }
 
-  const toggleEvidence = (itemId: string, field: string) => {
-    setLocalItems(localItems.map((it) => {
+  const toggleEvidence = (itemId: string, field: EvidenceField) => {
+    setLocalItems((prev) => prev.map((it) => {
       if (it.id !== itemId) return it
-      return { ...it, evidence: { ...(it.evidence || {}), [field]: !Boolean(it.evidence?.[field]) } }
+      const currentEvidence = it.evidence || { photosBefore: false, photosAfter: false, measurements: false }
+      return { ...it, evidence: { ...currentEvidence, [field]: !currentEvidence[field] } }
     }))
   }
 
@@ -3437,11 +5628,11 @@ function ChecklistEditor({
                         <p className="text-sm font-medium">Checklist por servicio</p>
                         <p className="mt-1 text-xs text-muted-foreground">Items del checklist específicos del servicio (separado de las verificaciones que marca el técnico).</p>
                       </div>
-                      <button onClick={addItem} className="rounded-full border border-border bg-card px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-secondary/80">Agregar verificación</button>
+                      <button onClick={() => addItem()} className="rounded-full border border-border bg-card px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-secondary/80">Agregar verificación</button>
                     </div>
 
                     <div className="mt-4 space-y-4">
-                      {(localItems.length ? localItems : serviceChecklistPreview).map((item) => (
+                      {(localItems.length ? localItems : serviceChecklistPreview).map((item: ChecklistItem) => (
                         <div key={item.id} className="rounded-3xl border border-border bg-card p-4">
                           <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-start">
                             <div className="flex flex-col gap-3">
@@ -3530,7 +5721,7 @@ function ChecklistEditor({
                     <p className="text-sm font-medium">Checklist de orden</p>
                     <p className="mt-1 text-xs text-muted-foreground">Items generales que aplican a toda la orden, aparte de las verificaciones por servicio.</p>
                   </div>
-                  <button onClick={addOrderItem} type="button" className="rounded-full border border-border bg-card px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-secondary/80">Agregar item</button>
+                  <button onClick={() => addOrderItem()} type="button" className="rounded-full border border-border bg-card px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-secondary/80">Agregar item</button>
                 </div>
 
                 <div className="mt-4 space-y-4">
@@ -3570,7 +5761,7 @@ function ChecklistEditor({
                     <p className="text-sm font-medium">Checklist para solicitudes bloqueadas</p>
                     <p className="mt-1 text-xs text-muted-foreground">Items adicionales que aplican cuando la solicitud queda bloqueada por revisión o falta de datos.</p>
                   </div>
-                  <button onClick={addBlockedItem} type="button" className="rounded-full border border-border bg-card px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-secondary/80">Agregar item</button>
+                  <button onClick={() => addBlockedItem()} type="button" className="rounded-full border border-border bg-card px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-secondary/80">Agregar item</button>
                 </div>
 
                 <div className="mt-4 space-y-4">

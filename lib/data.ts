@@ -105,11 +105,12 @@ export type Service = {
   markupPercent?: number
   ivaPercent?: number
   emergency?: boolean
+  hiddenFromClient?: boolean
 }
 
 export const serviceDefinitions: Record<string, Omit<Service, 'id'>> = defaultServiceDefinitions
 
-function resolveServiceDefinitions(overrides?: Array<{ id?: string; name?: string; short?: string; description?: string; from?: number; visitPrice?: number; markupPercent?: number; ivaPercent?: number; emergency?: boolean }>) {
+function resolveServiceDefinitions(overrides?: Array<{ id?: string; name?: string; short?: string; description?: string; from?: number; visitPrice?: number; markupPercent?: number; ivaPercent?: number; emergency?: boolean; hiddenFromClient?: boolean }>) {
   const fallback = defaultServiceDefinitions
 
   if (!Array.isArray(overrides) || overrides.length === 0) {
@@ -133,13 +134,14 @@ function resolveServiceDefinitions(overrides?: Array<{ id?: string; name?: strin
         markupPercent: Number((service as any).markupPercent ?? fallbackDefinition?.markupPercent ?? 0),
         ivaPercent: Number((service as any).ivaPercent ?? fallbackDefinition?.ivaPercent ?? 19),
         emergency: Boolean((service as any).emergency ?? fallbackDefinition?.emergency),
+        hiddenFromClient: Boolean((service as any).hiddenFromClient ?? fallbackDefinition?.hiddenFromClient ?? false),
     }
   })
 
   return merged
 }
 
-export function buildServicesFromConfig(overrides?: Array<{ id?: string; name?: string; short?: string; description?: string; from?: number; visitPrice?: number; markupPercent?: number; ivaPercent?: number; emergency?: boolean }>): Service[] {
+export function buildServicesFromConfig(overrides?: Array<{ id?: string; name?: string; short?: string; description?: string; from?: number; visitPrice?: number; markupPercent?: number; ivaPercent?: number; emergency?: boolean; hiddenFromClient?: boolean }>): Service[] {
   const definitions = resolveServiceDefinitions(overrides)
   return Object.entries(definitions).map(([id, service]) => ({ ...service, id }))
 }
@@ -492,7 +494,23 @@ export function applyPromotionToAmount(amount: number, promo: Promotion | null) 
   return Math.round(amount * (1 - v / 100))
 }
 
-export const statusOrder = ['pendiente', 'en camino', 'en proceso', 'finalizado', 'rechazado', 'en revision'] as const
+export const statusOrder = [
+  'pendiente',
+  'en camino',
+  'en proceso',
+  'en revision',
+  'cotizando',
+  'cotizado',
+  'recotizando',
+  'aceptada',
+  'pendiente_pago',
+  'pagada',
+  'rechazado',
+  'por_validar',
+  'finalizado',
+  'en_reclamo',
+  'anulada',
+] as const
 
 export type ServiceStatus = (typeof statusOrder)[number]
 export type WorkOrder = {

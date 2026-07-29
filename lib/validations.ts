@@ -25,7 +25,21 @@ export const crearOrdenSchema = z.object({
 
 export const actualizarOrdenSchema = z.object({
   id: z.number().int(),
-  estado: z.enum(["pendiente", "en camino", "en proceso", "finalizado"]).optional(),
+  estado: z.enum([
+    "pendiente",
+    "en camino",
+    "en proceso",
+    "en revision",
+    "cotizando",
+    "cotizado",
+    "recotizando",
+    "aceptada",
+    "pendiente_pago",
+    "pagada",
+    "rechazado",
+    "finalizado",
+    "anulada",
+  ]).optional(),
   tecnicoId: z.string().optional(),
   precio: z.number().int().positive().optional(),
   notasTecnico: z.string().optional(),
