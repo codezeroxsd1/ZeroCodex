@@ -1485,7 +1485,7 @@ function OrderDetail({ order, onClose }: { order: WorkOrder; onClose: () => void
       {section === 'calculadora' && (
         <CircuitCalculator
           onUseSummary={(summary) => {
-            setMaterialsDescription((prev) => `${prev}${prev ? '\n' : ''}${summary}`).trim()
+            setMaterialsDescription((prev) => `${prev}${prev ? '\n' : ''}${summary}`.trim())
           }}
         />
       )}

@@ -5,7 +5,7 @@ import path from 'path'
 import { revalidatePath } from 'next/cache'
 import { db, pool } from '@/lib/db'
 import { orden } from '@/lib/db/schema'
-import { eq, type InferModel } from 'drizzle-orm'
+import { eq, type InferInsertModel } from 'drizzle-orm'
 import { requireUser } from '@/lib/session'
 
 const settingsPath = path.join(process.cwd(), 'app', 'data', 'admin-settings.json')
@@ -517,12 +517,10 @@ export async function crearOrden(data: {
       return { success: false, error: 'Capacidad máxima alcanzada para esa franja horaria' }
     }
 
-    type OrdenInsert = InferModel<typeof orden, 'insert'>
-
-    const insertValues: OrdenInsert = {
+    const insertValues: InferInsertModel<typeof orden> = {
       clienteId: user.id,
       clienteNombre: user.name,
-      clienteTelefono: user.phone ?? undefined,
+      clienteTelefono: user.phone ?? null,
       categoria: data.categoria,
       descripcion: data.descripcion,
       direccion: data.direccion,
@@ -530,8 +528,8 @@ export async function crearOrden(data: {
       estado: 'pendiente',
       precio: data.precio,
       date: scheduledDate,
-      localDate: data.date || undefined,
-      localTime: data.time || undefined,
+      localDate: data.date || null,
+      localTime: data.time || null,
       historial: data.descripcion
         ? JSON.stringify([
             {
@@ -540,7 +538,7 @@ export async function crearOrden(data: {
               details: data.descripcion,
             },
           ])
-        : undefined,
+        : null,
     }
 
     const [created] = await db.insert(orden).values(insertValues).returning({ id: orden.id })

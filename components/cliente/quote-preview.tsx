@@ -366,18 +366,18 @@ export default function QuotePreview({ quote, onClose }: { quote: any; onClose?:
       : null
 
   const additionalConceptTotals = additionalBlocks.reduce(
-    (acc, block) => ({
-      subtotal: acc.subtotal + block.subtotal,
-      withMarkup: acc.withMarkup + block.withMarkup,
-      iva: acc.iva + block.iva,
-      total: acc.total + block.total,
+    (acc: { subtotal: number; withMarkup: number; iva: number; total: number }, block: any) => ({
+      subtotal: acc.subtotal + (Number(block?.subtotal) || 0),
+      withMarkup: acc.withMarkup + (Number(block?.withMarkup) || 0),
+      iva: acc.iva + (Number(block?.iva) || 0),
+      total: acc.total + (Number(block?.total) || 0),
     }),
     { subtotal: 0, withMarkup: 0, iva: 0, total: 0 },
   )
 
-  const netValueBeforeDiscount = pricing.materialsNetValue + pricing.visitNetValue + pricing.hoursNetValue + additionalConceptTotals.withMarkup
-  const grossValueBeforeDiscount = pricing.materialsValue + pricing.visitValue + pricing.hoursValue + additionalConceptTotals.total
-  const totalIvaBeforeDiscount = pricing.totalIvaValue + additionalConceptTotals.iva
+  const netValueBeforeDiscount = (Number(pricing?.materialsNetValue) || 0) + (Number(pricing?.visitNetValue) || 0) + (Number(pricing?.hoursNetValue) || 0) + additionalConceptTotals.withMarkup
+  const grossValueBeforeDiscount = (Number(pricing?.materialsValue) || 0) + (Number(pricing?.visitValue) || 0) + (Number(pricing?.hoursValue) || 0) + additionalConceptTotals.total
+  const totalIvaBeforeDiscount = (Number(pricing?.totalIvaValue) || 0) + additionalConceptTotals.iva
   const discountAmount = selectedPromotion ? computeBestPromotionDiscount(netValueBeforeDiscount, [selectedPromotion], new Date(), serviceConfig?.id).discount : 0
   const discountedNetValue = Math.max(0, netValueBeforeDiscount - discountAmount)
   const totalGrossAfterDiscount = discountedNetValue + totalIvaBeforeDiscount
@@ -420,7 +420,7 @@ export default function QuotePreview({ quote, onClose }: { quote: any; onClose?:
             {pricing.visitValue > 0 ? (
               <div className="flex items-center justify-between rounded-2xl border border-border bg-card px-4 py-3">
                 <span>Movilización</span>
-                <span>{formatCLP(pricing.visitValue)} x {pricing.additionalVisitCount > 0 ? pricing.additionalVisitCount + 1 : 1}</span>
+                <span>{formatCLP(Number(pricing?.visitValue) || 0)} x {(Number(pricing?.additionalVisitCount) || 0) > 0 ? (Number(pricing?.additionalVisitCount) || 0) + 1 : 1}</span>
               </div>
             ) : null}
             <div className="flex items-center justify-between rounded-2xl border border-border bg-card px-4 py-3">

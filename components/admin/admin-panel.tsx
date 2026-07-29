@@ -262,6 +262,24 @@ export function AdminPanel({
     setLocalQuotes((prev) => [quote, ...prev])
   }
 
+  const parseFeedback = (raw: unknown) => {
+    if (!raw) return null
+    if (typeof raw !== 'string') return raw
+    try {
+      return JSON.parse(raw)
+    } catch {
+      const trimmed = raw.trim()
+      if ((trimmed.startsWith('{') || trimmed.startsWith('['))) {
+        try {
+          return JSON.parse(trimmed)
+        } catch {
+          return raw
+        }
+      }
+      return raw
+    }
+  }
+
   const buildQuoteFeedbackPayload = (quote: any, preview?: {
     estimatedHours?: number
     details?: string
@@ -347,6 +365,7 @@ export function AdminPanel({
 
       setSelectedQuote((prev) => (prev?.id === quote.id ? { ...prev, status: 'cotizado' } : prev))
       setLocalQuotes((prev) => prev.map((item) => (item?.id === quote.id ? { ...item, status: 'cotizado' } : item)))
+      setPreviewQuoteOpen(false)
       window.alert('Cotización enviada al cliente.')
     } catch (error) {
       console.error('Error sending quote to client:', error)
@@ -2681,6 +2700,7 @@ function Cotizaciones(props: { quotes?: any[]; orders?: any[] }) {
   const [materialsConfig, setMaterialsConfig] = useState<any[]>([])
   const [promotionsConfig, setPromotionsConfig] = useState<any[]>([])
   const [selectedPromotionId, setSelectedPromotionId] = useState<string | null>(null)
+  const [previewQuoteOpen, setPreviewQuoteOpen] = useState(false)
   const [editableMaterials, setEditableMaterials] = useState<any[]>([])
   const [editableReviewDescription, setEditableReviewDescription] = useState('')
   const [editableEstimatedHours, setEditableEstimatedHours] = useState<number | null>(null)
