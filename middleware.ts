@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server"
 
-export function proxy.ts(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const protectedRoutes = {
     "/cliente": "cliente",
     "/tecnico": "tecnico",
