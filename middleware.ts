@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server"
 
-export function proxy(request: NextRequest) {
+export default function middleware(request: NextRequest) {
   const protectedRoutes = {
     "/cliente": "cliente",
     "/tecnico": "tecnico",
