@@ -293,6 +293,7 @@ export default function QuotePreview({ quote, onClose }: { quote: any; onClose?:
       hoursValue: totals.hoursValue,
       visitNetValue: totals.visitNetValue,
       visitValue: totals.visitValue,
+      additionalVisitCount: totals.additionalVisitCount,
       totalProfitValue: totals.totalProfitValue,
       materialsProfitValue: totals.materialsProfitValue,
       hoursProfitValue: totals.hoursProfitValue,
