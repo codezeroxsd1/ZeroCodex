@@ -2817,7 +2817,7 @@ function Cotizaciones(props: { quotes?: any[]; orders?: any[] }) {
         orderId: quote.orderId ?? numericOrderId,
       }
 
-      setSelectedQuote((prev) => (prev?.id === quote.id ? updatedQuote : prev))
+      setSelectedQuote((prev: any) => (prev?.id === quote.id ? updatedQuote : prev))
       window.alert('Cotización enviada al cliente.')
     } catch (error) {
       console.error('Error sending quote to client:', error)
