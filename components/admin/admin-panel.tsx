@@ -363,9 +363,7 @@ export function AdminPanel({
         return
       }
 
-      setSelectedQuote((prev) => (prev?.id === quote.id ? { ...prev, status: 'cotizado' } : prev))
       setLocalQuotes((prev) => prev.map((item) => (item?.id === quote.id ? { ...item, status: 'cotizado' } : item)))
-      setPreviewQuoteOpen(false)
       window.alert('Cotización enviada al cliente.')
     } catch (error) {
       console.error('Error sending quote to client:', error)
