@@ -1,5 +1,6 @@
 import { auth } from "@/lib/auth"
 import { headers } from "next/headers"
+import { cookies } from "next/headers"
 import { UnauthorizedError, ForbiddenError } from "./errors"
 
 export type Role = "cliente" | "tecnico" | "admin"
@@ -14,11 +15,21 @@ export type SessionUser = {
 
 export async function getSessionUser(): Promise<SessionUser | null> {
   try {
-    const session = await auth.api.getSession({ headers: await headers() })
+    const headerStore = await headers()
+    const cookieStore = await cookies()
+
+    const requestHeaders = new Headers(headerStore as Headers)
+    const cookieHeader = cookieStore.toString()
+
+    if (cookieHeader) {
+      requestHeaders.set("cookie", cookieHeader)
+    }
+
+    const session = await auth.api.getSession({ headers: requestHeaders })
     if (!session?.user) return null
-    
+
     const u = session.user as typeof session.user & { role?: string; phone?: string | null }
-    
+
     return {
       id: u.id,
       name: u.name,
