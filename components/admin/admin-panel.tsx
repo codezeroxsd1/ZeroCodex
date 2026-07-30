@@ -3331,6 +3331,7 @@ function Cotizaciones(props: { quotes?: any[]; orders?: any[] }) {
     )
     const totalNetValue = pricing.materialsNetValue + pricing.visitNetValue + pricing.hoursNetValue + additionalConceptTotals.withMarkup
     const totalIvaBeforeDiscount = pricing.totalIvaValue + additionalConceptTotals.iva
+    const applicablePromotions = getApplicablePromotions(promotionsConfig, new Date(), serviceConfig?.id)
     const selectedPromotion = selectedPromotionId
       ? promotionsConfig.find((promotion: any) => promotion.id === selectedPromotionId)
       : null
