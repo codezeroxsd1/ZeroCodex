@@ -6,28 +6,30 @@ import { Pool } from "pg"
 const baseURL = (() => {
   // Prioridad en environment variables
   if (process.env.BETTER_AUTH_URL) return process.env.BETTER_AUTH_URL
-  
+  if (process.env.RENDER_EXTERNAL_URL) return process.env.RENDER_EXTERNAL_URL
+
   // En producción, usar VERCEL_PROJECT_PRODUCTION_URL
   if (process.env.NODE_ENV === "production" && process.env.VERCEL_PROJECT_PRODUCTION_URL) {
     return `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
   }
-  
+
   // Fallback a VERCEL_URL en preview
   if (process.env.VERCEL_URL) {
     return `https://${process.env.VERCEL_URL}`
   }
-  
+
   // Development fallback
   if (process.env.V0_RUNTIME_URL) {
     return process.env.V0_RUNTIME_URL
   }
-  
+
   // Default localhost
   return "http://localhost:3000"
 })()
 
 const trustedOrigins = [
   baseURL,
+  process.env.RENDER_EXTERNAL_URL,
   process.env.V0_RUNTIME_URL,
   process.env.VERCEL_URL && `https://${process.env.VERCEL_URL}`,
   process.env.VERCEL_PROJECT_PRODUCTION_URL && `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`,
@@ -88,6 +90,10 @@ export const auth = betterAuth({
     defaultCookieAttributes: {
       sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
       secure: process.env.NODE_ENV !== "development",
+    },
+    ipAddress: {
+      ipAddressHeaders: ["x-forwarded-for"],
+      trustedProxies: ["127.0.0.1", "::1"],
     },
   },
 })

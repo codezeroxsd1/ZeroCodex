@@ -14,7 +14,7 @@ export default async function SignUpRolePage({ params }: { params: Promise<{ rol
 
   const user = await getSessionUser()
   if (user) {
-    redirect(homeByRole[role as keyof typeof homeByRole])
+    redirect(homeByRole[user.role])
   }
 
   return (

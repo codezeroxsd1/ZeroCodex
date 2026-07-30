@@ -2,9 +2,9 @@ import { NextResponse, type NextRequest } from "next/server"
 
 export function middleware(request: NextRequest) {
   const protectedRoutes = {
-    "/cliente": "cliente",
-    "/tecnico": "tecnico",
-    "/admin": "admin",
+    "/cliente": "/sign-in/cliente",
+    "/tecnico": "/sign-in/tecnico",
+    "/admin": "/sign-in/admin",
   } as Record<string, string>
 
   const pathname = request.nextUrl.pathname
