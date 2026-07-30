@@ -9,13 +9,14 @@ export function middleware(request: NextRequest) {
 
   const pathname = request.nextUrl.pathname
 
-  for (const [route, loginPath] of Object.entries(protectedRoutes)) {
-    if (pathname.startsWith(route)) {
-      const sessionCookie = request.cookies.get("better-auth.session_token")
+  const hasSessionCookie = [
+    "better-auth.session_token",
+    "__Secure-better-auth.session_token",
+  ].some((name) => request.cookies.has(name))
 
-      if (!sessionCookie) {
-        return NextResponse.redirect(new URL(loginPath, request.url))
-      }
+  for (const [route, loginPath] of Object.entries(protectedRoutes)) {
+    if (pathname.startsWith(route) && !hasSessionCookie) {
+      return NextResponse.redirect(new URL(loginPath, request.url))
     }
   }
 
