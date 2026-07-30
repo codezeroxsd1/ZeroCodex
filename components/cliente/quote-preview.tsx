@@ -449,7 +449,7 @@ export default function QuotePreview({ quote, onClose }: { quote: any; onClose?:
               <p className="text-sm font-semibold text-foreground">Conceptos adicionales</p>
               {additionalBlocks.length > 0 ? (
                 <div className="mt-3 space-y-3">
-                  {additionalBlocks.map((block) => (
+                  {additionalBlocks.map((block: any) => (
                     <div key={block.key} className="rounded-xl border border-border bg-background px-3 py-3 text-sm">
                       <div className="flex items-center justify-between gap-3">
                         <div>
