@@ -2700,7 +2700,6 @@ function Cotizaciones(props: { quotes?: any[]; orders?: any[] }) {
   const [materialsConfig, setMaterialsConfig] = useState<any[]>([])
   const [promotionsConfig, setPromotionsConfig] = useState<any[]>([])
   const [selectedPromotionId, setSelectedPromotionId] = useState<string | null>(null)
-  const [previewQuoteOpen, setPreviewQuoteOpen] = useState(false)
   const [editableMaterials, setEditableMaterials] = useState<any[]>([])
   const [editableReviewDescription, setEditableReviewDescription] = useState('')
   const [editableEstimatedHours, setEditableEstimatedHours] = useState<number | null>(null)
