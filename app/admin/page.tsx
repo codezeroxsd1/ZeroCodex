@@ -1,6 +1,8 @@
 import { redirect } from 'next/navigation'
 import { AdminPanel } from "@/components/admin/admin-panel"
 import { db, pool } from '@/lib/db'
+
+export const dynamic = 'force-dynamic'
 import { user, orden } from '@/lib/db/schema'
 import { getFriendlyServiceName } from '@/lib/data'
 import { getSessionUser } from '@/lib/session'

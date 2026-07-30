@@ -3,6 +3,8 @@ import { pool } from '@/lib/db'
 import fs from 'fs/promises'
 import path from 'path'
 
+export const dynamic = 'force-dynamic'
+
 export default async function Page() {
   await requireRole('admin')
 
