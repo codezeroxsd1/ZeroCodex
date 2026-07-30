@@ -6,14 +6,17 @@
 import { NextRequest, NextResponse } from "next/server"
 import { cookies } from "next/headers"
 
-if (process.env.NODE_ENV !== "development") {
-  throw new Error("Solo disponible en desarrollo")
-}
-
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ role: string }> }
 ) {
+  if (process.env.NODE_ENV !== "development") {
+    return NextResponse.json(
+      { error: "Solo disponible en desarrollo" },
+      { status: 404 }
+    )
+  }
+
   try {
     const { role } = await params
 

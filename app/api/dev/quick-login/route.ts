@@ -5,12 +5,14 @@
 
 import { NextRequest, NextResponse } from "next/server"
 
-// Solo en desarrollo
-if (process.env.NODE_ENV !== "development") {
-  throw new Error("Esta ruta solo está disponible en desarrollo")
-}
-
 export async function POST(req: NextRequest) {
+  if (process.env.NODE_ENV !== "development") {
+    return NextResponse.json(
+      { error: "Esta ruta solo está disponible en desarrollo" },
+      { status: 404 }
+    )
+  }
+
   try {
     const { email, role } = await req.json()
 
