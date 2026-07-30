@@ -2766,7 +2766,16 @@ function Cotizaciones(props: { quotes?: any[]; orders?: any[] }) {
     return null
   }
 
-  const sendQuoteToClient = async (quote: any) => {
+  const sendQuoteToClient = async (
+    quote: any,
+    preview?: {
+      estimatedHours?: number
+      details?: string
+      materials?: any[]
+      additionalBlocks?: any[]
+      selectedPromotionId?: string | null
+    },
+  ) => {
     if (!quote?.id && quote?.orderId == null) return
     if (!window.confirm('¿Estás seguro que deseas enviar esta cotización al cliente?')) return
 
@@ -2789,6 +2798,19 @@ function Cotizaciones(props: { quotes?: any[]; orders?: any[] }) {
       const finalFeedback = feedbackObject
         ? {
             ...feedbackObject,
+            ...(preview?.estimatedHours !== undefined ? { estimatedHours: preview.estimatedHours } : {}),
+            ...(preview?.details !== undefined ? { details: preview.details } : {}),
+            ...(Array.isArray(preview?.materials) && preview.materials.length > 0 ? { materials: { items: preview.materials } } : {}),
+            ...(Array.isArray(preview?.additionalBlocks) && preview.additionalBlocks.length > 0 ? { additionalBlocks: preview.additionalBlocks.map((block: any) => ({
+              id: block.id,
+              name: block.name,
+              unit: block.unit,
+              unitPrice: Number(block.unitPrice ?? 0),
+              quantity: Number(block.quantity ?? 0),
+              markupPercent: Number(block.markupPercent ?? 0),
+              ivaPercent: Number(block.ivaPercent ?? 0),
+            })) } : {}),
+            ...(preview?.selectedPromotionId !== undefined ? { promotionId: preview.selectedPromotionId } : {}),
             quote: {
               ...((feedbackObject as any).quote ?? {}),
               status: 'Enviada',
