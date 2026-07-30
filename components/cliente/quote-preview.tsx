@@ -264,6 +264,7 @@ export default function QuotePreview({ quote, onClose }: { quote: any; onClose?:
       hoursValue,
       visitNetValue,
       visitValue,
+      additionalVisitCount,
       materialsIvaPercent: 19,
       hoursIvaPercent: Number(serviceConfig?.hourIvaPercent ?? 19),
       visitIvaPercent: Number(serviceConfig?.ivaPercent ?? 19),
