@@ -3,7 +3,12 @@
   "blockedHours": [],
   "maxRequestsPerSlot": 1,
   "maxAdvanceDays": 6,
-  "minAdvanceDays": 2,
+  "minAdvanceDays": 4,
+  "contactLink": "https://wa.me/56900000000",
+  "primaryCtaLink": "/cliente",
+  "primaryCtaLabel": "Solicitar servicio",
+  "secondaryCtaLink": "/admin",
+  "secondaryCtaLabel": "Ver panel de gestión",
   "services": [
     {
       "id": "diagnostico",

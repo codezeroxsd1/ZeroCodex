@@ -7,6 +7,7 @@ import { db, pool } from '@/lib/db'
 import { orden } from '@/lib/db/schema'
 import { eq, type InferInsertModel } from 'drizzle-orm'
 import { requireUser } from '@/lib/session'
+import { addDaysToDateKey, buildDateKeyFromParts, getTodayDateKey } from '@/lib/booking-date'
 
 const settingsPath = path.join(process.cwd(), 'app', 'data', 'admin-settings.json')
 
@@ -500,14 +501,14 @@ export async function crearOrden(data: {
     }
 
     const minAdvanceDays = await getMinAdvanceDays()
-    const today = new Date()
-    const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0, 0)
+    const todayDateKey = getTodayDateKey('America/Santiago')
     const [year, month, day] = data.date.split('-').map((value) => Number(value))
-    const selectedDateStart = new Date(year, month - 1, day, 0, 0, 0, 0)
-    const minimumAllowedDate = new Date(todayStart)
-    minimumAllowedDate.setDate(todayStart.getDate() + minAdvanceDays)
+    const selectedDateKey = Number.isInteger(year) && Number.isInteger(month) && Number.isInteger(day)
+      ? buildDateKeyFromParts(year, month - 1, day)
+      : data.date
+    const minimumAllowedDateKey = addDaysToDateKey(todayDateKey, minAdvanceDays)
 
-    if (selectedDateStart < minimumAllowedDate) {
+    if (selectedDateKey < minimumAllowedDateKey) {
       return { success: false, error: `La reserva debe realizarse con al menos ${minAdvanceDays} día${minAdvanceDays === 1 ? '' : 's'} de anticipación` }
     }
 

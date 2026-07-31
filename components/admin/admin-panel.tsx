@@ -946,11 +946,35 @@ function Clientes({ clients = [], orders = [] }: { clients: any[]; orders: any[]
 }
 
 function Tecnicos({ technicians = [] }: { technicians: any[] }) {
+  const router = useRouter()
+  const [approvingId, setApprovingId] = useState<string | null>(null)
   const statusColor: Record<string, string> = {
     Disponible: 'text-primary',
     'En terreno': 'text-warning',
     Descanso: 'text-muted-foreground',
+    'Pendiente aprobación': 'text-warning',
   }
+
+  const handleApprove = async (techId: string) => {
+    setApprovingId(techId)
+    try {
+      const response = await fetch('/api/admin/technicians/approve', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: techId }),
+      })
+      const json = await response.json()
+      if (!response.ok || !json?.success) {
+        throw new Error(json?.error || 'No se pudo aprobar al técnico')
+      }
+      router.refresh()
+    } catch (error) {
+      alert(`❌ ${error instanceof Error ? error.message : 'No se pudo aprobar al técnico'}`)
+    } finally {
+      setApprovingId(null)
+    }
+  }
+
   return (
     <div>
       <PageTitle title="Técnicos" subtitle="Equipo en terreno y disponibilidad" />
@@ -983,6 +1007,23 @@ function Tecnicos({ technicians = [] }: { technicians: any[] }) {
               <span className="font-bold text-foreground">{t.jobsToday}</span>{' '}
               <span className="text-muted-foreground">trabajos hoy</span>
             </div>
+            {Boolean(t.isApproved) ? (
+              <div className="mt-3 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-xs font-medium text-emerald-700">
+                Aprobado
+              </div>
+            ) : (
+              <div className="mt-3 flex items-center justify-between gap-2 rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs font-medium text-amber-700">
+                <span>Pendiente aprobación</span>
+                <button
+                  type="button"
+                  onClick={() => handleApprove(t.id)}
+                  disabled={approvingId === t.id}
+                  className="rounded-full bg-amber-600 px-2.5 py-1 text-[11px] font-semibold text-white disabled:opacity-60"
+                >
+                  {approvingId === t.id ? 'Aprobando...' : 'Aprobar'}
+                </button>
+              </div>
+            )}
           </div>
         ))}
       </div>
@@ -4532,6 +4573,26 @@ function Configuraciones({ initialTab }: { initialTab?: 'agenda' | 'servicios' |
     setSettings({ ...settings, minAdvanceDays: nextValue })
   }
 
+  const updateContactLink = (value: string) => {
+    setSettings({ ...settings, contactLink: value })
+  }
+
+  const updatePrimaryCtaLink = (value: string) => {
+    setSettings({ ...settings, primaryCtaLink: value })
+  }
+
+  const updatePrimaryCtaLabel = (value: string) => {
+    setSettings({ ...settings, primaryCtaLabel: value })
+  }
+
+  const updateSecondaryCtaLink = (value: string) => {
+    setSettings({ ...settings, secondaryCtaLink: value })
+  }
+
+  const updateSecondaryCtaLabel = (value: string) => {
+    setSettings({ ...settings, secondaryCtaLabel: value })
+  }
+
   const updateServiceField = (index: number, field: string, value: string | number | boolean) => {
     const services = [...(settings.services ?? [])]
     services[index] = { ...services[index], [field]: value }
@@ -4787,6 +4848,55 @@ function Configuraciones({ initialTab }: { initialTab?: 'agenda' | 'servicios' |
                     <button type="button" onClick={() => updateMinAdvanceDays((Number(settings.minAdvanceDays ?? 1)) - 1)} className="rounded-lg border border-border px-2 py-1 text-sm">−</button>
                     <input type="number" min={0} value={Number(settings.minAdvanceDays ?? 1)} onChange={(e) => updateMinAdvanceDays(Number(e.target.value))} className="w-20 rounded-lg border border-border bg-background px-3 py-2 text-sm" />
                     <button type="button" onClick={() => updateMinAdvanceDays((Number(settings.minAdvanceDays ?? 1)) + 1)} className="rounded-lg border border-border px-2 py-1 text-sm">+</button>
+                  </div>
+                </div>
+                <div className="space-y-3 rounded-lg border border-border bg-background/70 p-3">
+                  <div>
+                    <p className="mb-1 text-sm font-medium">Enlace del botón “Contacto” del banner principal</p>
+                    <p className="text-xs text-muted-foreground">Este enlace controla únicamente el botón superior derecho de la portada llamado “Contacto”.</p>
+                    <input
+                      type="url"
+                      value={String(settings.contactLink ?? 'https://wa.me/56900000000')}
+                      onChange={(e) => updateContactLink(e.target.value)}
+                      placeholder="https://wa.me/56900000000"
+                      className="mt-2 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
+                    />
+                  </div>
+                  <div>
+                    <p className="mb-1 text-sm font-medium">Botón principal de la portada</p>
+                    <p className="text-xs text-muted-foreground">Controla el texto y el destino del botón principal de la sección inicial.</p>
+                    <input
+                      type="text"
+                      value={String(settings.primaryCtaLabel ?? 'Solicitar servicio')}
+                      onChange={(e) => updatePrimaryCtaLabel(e.target.value)}
+                      placeholder="Solicitar servicio"
+                      className="mt-2 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
+                    />
+                    <input
+                      type="text"
+                      value={String(settings.primaryCtaLink ?? '/cliente')}
+                      onChange={(e) => updatePrimaryCtaLink(e.target.value)}
+                      placeholder="/cliente"
+                      className="mt-2 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
+                    />
+                  </div>
+                  <div>
+                    <p className="mb-1 text-sm font-medium">Botón secundario de la portada</p>
+                    <p className="text-xs text-muted-foreground">Controla el texto y el destino del botón secundario de la sección inicial.</p>
+                    <input
+                      type="text"
+                      value={String(settings.secondaryCtaLabel ?? 'Ver panel de gestión')}
+                      onChange={(e) => updateSecondaryCtaLabel(e.target.value)}
+                      placeholder="Ver panel de gestión"
+                      className="mt-2 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
+                    />
+                    <input
+                      type="text"
+                      value={String(settings.secondaryCtaLink ?? '/admin')}
+                      onChange={(e) => updateSecondaryCtaLink(e.target.value)}
+                      placeholder="/admin"
+                      className="mt-2 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
+                    />
                   </div>
                 </div>
               </div>

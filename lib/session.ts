@@ -14,18 +14,30 @@ export type SessionUser = {
   phone?: string | null
 }
 
+type AuthSessionLike = {
+  user?: {
+    id: string
+    name: string
+    email: string
+    role?: string
+    isApproved?: boolean
+    phone?: string | null
+  }
+}
+
 function isTransientAuthError(error: unknown): boolean {
   return error instanceof Error
     ? /ECONNRESET|EPIPE|ETIMEDOUT|socket hang up|fetch failed/i.test(error.message)
     : false
 }
 
-async function getSessionFromAuth(headersValue: Headers): Promise<unknown> {
+async function getSessionFromAuth(headersValue: Headers): Promise<AuthSessionLike | null> {
   let lastError: unknown
 
   for (let attempt = 1; attempt <= 2; attempt += 1) {
     try {
-      return await auth.api.getSession({ headers: headersValue })
+      const session = await auth.api.getSession({ headers: headersValue })
+      return session as AuthSessionLike | null
     } catch (error) {
       lastError = error
       if (attempt === 2 || !isTransientAuthError(error)) {

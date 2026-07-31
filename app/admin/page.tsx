@@ -62,7 +62,14 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
 
   const technicians = users
     .filter((u: any) => normalizeRole(u.role) === 'tecnico')
-    .map((t: any) => ({ id: t.id, name: t.name || t.email, rating: 0, specialty: '', status: 'Disponible' }))
+    .map((t: any) => ({
+      id: t.id,
+      name: t.name || t.email,
+      rating: 0,
+      specialty: '',
+      status: 'Disponible',
+      isApproved: Boolean(t.isApproved),
+    }))
 
   const workOrders = orders.map((o: any) => {
     const estado = o.estado || o.status || 'pendiente'

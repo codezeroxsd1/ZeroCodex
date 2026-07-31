@@ -22,6 +22,10 @@ export default async function TecnicoPage() {
     redirect(homeByRole[sessionUser.role])
   }
 
+  if (!sessionUser.isApproved) {
+    redirect('/sign-in/tecnico?pending=1')
+  }
+
   let orders: any[] = []
   try {
     orders = await db.select().from(orden).limit(100)

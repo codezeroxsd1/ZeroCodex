@@ -2,14 +2,11 @@ import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { orden } from '@/lib/db/schema'
 import { desc, eq } from 'drizzle-orm'
-import { getSessionUser } from '@/lib/session'
+import { requireRole } from '@/lib/session'
 
 export async function GET() {
   try {
-    const user = await getSessionUser()
-    if (!user) {
-      return NextResponse.json({ orders: [] })
-    }
+    const user = await requireRole('cliente')
 
     // Use a raw fallback query to avoid Drizzle selecting columns that may not exist
     try {

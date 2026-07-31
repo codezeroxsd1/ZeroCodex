@@ -13,6 +13,7 @@ import {
 } from 'lucide-react'
 import { calcPriceWithIva, calcPriceWithMarkup, formatCLP, getApplicablePromotions, applyPromotionToAmount } from '@/lib/data'
 import { cn } from '@/lib/utils'
+import { buildDateKeyFromParts } from '@/lib/booking-date'
 import { crearOrden } from '@/app/actions/orden'
 import { useConfiguredServices } from './use-configured-services'
 
@@ -34,6 +35,10 @@ export function ClienteSolicitar({
   const service = services.find((s) => s.id === serviceId) ?? services[0]
   const [step, setStep] = useState<Step>('detalle')
   const [day, setDay] = useState(() => String(new Date().getDate()))
+  const [selectedDateKey, setSelectedDateKey] = useState(() => {
+    const now = new Date()
+    return buildDateKeyFromParts(now.getFullYear(), now.getMonth(), now.getDate())
+  })
   const [hour, setHour] = useState('15:30')
   const [address, setAddress] = useState('Av. Providencia 1234, Santiago')
   const [notes, setNotes] = useState('')
@@ -47,7 +52,7 @@ export function ClienteSolicitar({
   const [maxAdvanceDays, setMaxAdvanceDays] = useState(3)
   const [minAdvanceDays, setMinAdvanceDays] = useState(1)
   const [calendarOffset, setCalendarOffset] = useState(0)
-  const [calendarDays, setCalendarDays] = useState<Array<{ d: string; n: string }>>([])
+  const [calendarDays, setCalendarDays] = useState<Array<{ d: string; n: string; dateKey: string }>>([])
   const [promotions, setPromotions] = useState<any[] | undefined>(undefined)
 
   const base = service.from > 0 ? service.from : 45000
@@ -84,13 +89,7 @@ export function ClienteSolicitar({
   async function handleConfirmReservation() {
     setIsSubmitting(true)
     try {
-      // construct ISO date from selected day and hour
-      const now = new Date()
-      const year = now.getFullYear()
-      const month = now.getMonth()
-      const dayNum = Number(day)
-      const [hh, mm] = (hour || '15:30').split(':').map((s) => Number(s))
-      const dateKey = new Date(year, month, dayNum).toISOString().split('T')[0]
+      const dateKey = selectedDateKey || buildDateKeyFromParts(new Date().getFullYear(), new Date().getMonth(), Number(day))
 
       const result = await crearOrden({
         categoria: service.name,
@@ -106,11 +105,7 @@ export function ClienteSolicitar({
         setCreatedOrderId(String(result.ordenId))
         // refresh availability for selected day so UI blocks if capacity reached
         try {
-          const now = new Date()
-          const year = now.getFullYear()
-          const month = now.getMonth()
-          const dateKey = new Date(year, month, Number(day)).toISOString().split('T')[0]
-          const resp = await fetch(`/api/agenda/availability?date=${encodeURIComponent(dateKey)}`)
+          const resp = await fetch(`/api/agenda/availability?date=${encodeURIComponent(selectedDateKey)}`)
           const json = await resp.json()
           if (json?.success && json.counts) setAvailability(json.counts)
         } catch (e) {
@@ -162,6 +157,7 @@ export function ClienteSolicitar({
       return {
         d: isToday ? 'Hoy' : dayNames[next.getDay()],
         n: String(next.getDate()),
+        dateKey: buildDateKeyFromParts(next.getFullYear(), next.getMonth(), next.getDate()),
       }
     })
     setCalendarDays(baseDays)
@@ -170,11 +166,7 @@ export function ClienteSolicitar({
   useEffect(() => {
     // fetch availability for selected date
     const abort = new AbortController()
-    const now = new Date()
-    const year = now.getFullYear()
-    const month = now.getMonth()
-    const dayNum = Number(day)
-    const dateKey = new Date(year, month, dayNum).toISOString().split('T')[0]
+    const dateKey = selectedDateKey
 
     fetch(`/api/agenda/availability?date=${encodeURIComponent(dateKey)}`, { signal: abort.signal })
       .then((r) => r.json())
@@ -184,7 +176,7 @@ export function ClienteSolicitar({
       .catch(() => {})
 
     return () => abort.abort()
-  }, [day])
+  }, [selectedDateKey])
 
   return (
     <div className="p-4 lg:p-6">
@@ -267,14 +259,15 @@ export function ClienteSolicitar({
                 <div className="flex gap-2">
                   {calendarDays.map((d) => {
                     const blocked = blockedDays.includes(d.d) || blockedDays.includes(dayNames[new Date(new Date().getFullYear(), new Date().getMonth(), Number(d.n)).getDay()])
+                    const isSelected = selectedDateKey === d.dateKey
                     return (
                       <button
-                        key={d.n}
-                        onClick={() => !blocked && setDay(d.n)}
+                        key={d.dateKey}
+                        onClick={() => !blocked && (setDay(d.n), setSelectedDateKey(d.dateKey))}
                         disabled={blocked}
                         className={cn(
                           'flex flex-1 flex-col items-center rounded-xl border py-2 text-sm',
-                          day === d.n
+                          isSelected
                             ? 'border-primary bg-primary/10 text-primary'
                             : 'border-border text-muted-foreground',
                           blocked ? 'cursor-not-allowed opacity-50 line-through' : '',

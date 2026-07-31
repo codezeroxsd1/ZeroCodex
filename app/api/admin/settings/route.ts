@@ -2,6 +2,7 @@ import { promises as fs } from 'fs'
 import path from 'path'
 import { execFileSync } from 'child_process'
 import { NextResponse } from 'next/server'
+import { requireRole } from '@/lib/session'
 
 const settingsPath = path.join(process.cwd(), 'app', 'data', 'admin-settings.json')
 
@@ -12,6 +13,11 @@ const defaultSettings = {
   maxRequestsPerSlot: 3,
   maxAdvanceDays: 3,
   minAdvanceDays: 1,
+  contactLink: 'https://wa.me/56900000000',
+  primaryCtaLink: '/cliente',
+  primaryCtaLabel: 'Solicitar servicio',
+  secondaryCtaLink: '/admin',
+  secondaryCtaLabel: 'Ver panel de gestión',
   services: [
     {
       id: 'diagnostico',
@@ -108,6 +114,11 @@ async function readSettings() {
       maxRequestsPerSlot: Number.isFinite(Number(normalized?.maxRequestsPerSlot)) ? Number(normalized.maxRequestsPerSlot) : defaultSettings.maxRequestsPerSlot,
       maxAdvanceDays: Number.isFinite(Number(normalized?.maxAdvanceDays)) ? Number(normalized.maxAdvanceDays) : defaultSettings.maxAdvanceDays,
       minAdvanceDays: Number.isFinite(Number(normalized?.minAdvanceDays)) ? Number(normalized.minAdvanceDays) : defaultSettings.minAdvanceDays,
+      contactLink: typeof normalized?.contactLink === 'string' && normalized.contactLink.trim() ? normalized.contactLink.trim() : defaultSettings.contactLink,
+      primaryCtaLink: typeof normalized?.primaryCtaLink === 'string' && normalized.primaryCtaLink.trim() ? normalized.primaryCtaLink.trim() : defaultSettings.primaryCtaLink,
+      primaryCtaLabel: typeof normalized?.primaryCtaLabel === 'string' && normalized.primaryCtaLabel.trim() ? normalized.primaryCtaLabel.trim() : defaultSettings.primaryCtaLabel,
+      secondaryCtaLink: typeof normalized?.secondaryCtaLink === 'string' && normalized.secondaryCtaLink.trim() ? normalized.secondaryCtaLink.trim() : defaultSettings.secondaryCtaLink,
+      secondaryCtaLabel: typeof normalized?.secondaryCtaLabel === 'string' && normalized.secondaryCtaLabel.trim() ? normalized.secondaryCtaLabel.trim() : defaultSettings.secondaryCtaLabel,
       // Normalize checklist items to include materials and evidence requirements
       checklists: (typeof normalized?.checklists === 'object' && normalized.checklists) ? Object.fromEntries(
         Object.entries(normalized.checklists).map(([svc, items]: any) => [
@@ -154,6 +165,7 @@ export async function GET() {
 
 export async function POST(req: Request) {
   try {
+    await requireRole('admin')
     const body = await req.json()
     const nextSettings = {
       ...defaultSettings,
@@ -163,6 +175,11 @@ export async function POST(req: Request) {
       maxRequestsPerSlot: Number.isFinite(Number(body?.maxRequestsPerSlot)) ? Number(body.maxRequestsPerSlot) : defaultSettings.maxRequestsPerSlot,
       maxAdvanceDays: Number.isFinite(Number(body?.maxAdvanceDays)) ? Number(body.maxAdvanceDays) : defaultSettings.maxAdvanceDays,
       minAdvanceDays: Number.isFinite(Number(body?.minAdvanceDays)) ? Number(body.minAdvanceDays) : defaultSettings.minAdvanceDays,
+      contactLink: typeof body?.contactLink === 'string' && body.contactLink.trim() ? body.contactLink.trim() : defaultSettings.contactLink,
+      primaryCtaLink: typeof body?.primaryCtaLink === 'string' && body.primaryCtaLink.trim() ? body.primaryCtaLink.trim() : defaultSettings.primaryCtaLink,
+      primaryCtaLabel: typeof body?.primaryCtaLabel === 'string' && body.primaryCtaLabel.trim() ? body.primaryCtaLabel.trim() : defaultSettings.primaryCtaLabel,
+      secondaryCtaLink: typeof body?.secondaryCtaLink === 'string' && body.secondaryCtaLink.trim() ? body.secondaryCtaLink.trim() : defaultSettings.secondaryCtaLink,
+      secondaryCtaLabel: typeof body?.secondaryCtaLabel === 'string' && body.secondaryCtaLabel.trim() ? body.secondaryCtaLabel.trim() : defaultSettings.secondaryCtaLabel,
       checklists: (typeof body?.checklists === 'object' && body.checklists) ? Object.fromEntries(
         Object.entries(body.checklists).map(([svc, items]: any) => [
           svc,

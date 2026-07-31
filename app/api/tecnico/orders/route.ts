@@ -1,9 +1,11 @@
 import { NextResponse } from 'next/server'
 import { db, pool } from '@/lib/db'
 import { orden } from '@/lib/db/schema'
+import { requireApprovedTechnician } from '@/lib/session'
 
 export async function GET() {
   try {
+    await requireApprovedTechnician()
     const orders = await db.select().from(orden).limit(200)
     return NextResponse.json({ orders })
   } catch (error) {

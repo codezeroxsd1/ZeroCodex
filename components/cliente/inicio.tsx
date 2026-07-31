@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo } from 'react'
-import { Zap, Siren, CalendarPlus, ArrowRight, ShieldCheck, ChevronRight, MessageCircle } from 'lucide-react'
+import { Zap, Siren, CalendarPlus, ArrowRight, ShieldCheck, ChevronRight } from 'lucide-react'
 import { formatCLP, type ServiceStatus } from '@/lib/data'
 import { StatusBadge } from '@/components/status-badge'
 import type { ClienteTab } from './cliente-app'
@@ -48,24 +48,13 @@ export function ClienteInicio({
             <h2 className="mt-1 max-w-[15rem] text-balance font-display text-2xl font-bold leading-tight lg:max-w-none">
               ¿Necesitas un electricista hoy?
             </h2>
-            <div className="mt-4 flex flex-wrap items-center gap-3">
-              <button
-                onClick={() => onSelectService('diagnostico')}
-                className="inline-flex items-center gap-2 rounded-full bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground shadow-glow"
-              >
-                <Zap className="size-4" />
-                Solicitar servicio
-              </button>
-              <a
-                href="https://wa.me/56953396639"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 rounded-full border border-primary/30 bg-background/70 px-5 py-2.5 text-sm font-semibold text-primary"
-              >
-                <MessageCircle className="size-4" />
-                WhatsApp
-              </a>
-            </div>
+            <button
+              onClick={() => onSelectService('diagnostico')}
+              className="mt-4 inline-flex items-center gap-2 rounded-full bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground shadow-glow"
+            >
+              <Zap className="size-4" />
+              Solicitar servicio
+            </button>
           </div>
           <div className="rounded-2xl border border-primary/20 bg-background/60 p-4 text-sm text-muted-foreground lg:ml-auto lg:max-w-sm">
             Atención rápida, seguimiento claro y pagos sencillos desde cualquier dispositivo.
