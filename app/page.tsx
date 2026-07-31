@@ -15,6 +15,8 @@ import {
 import { Logo } from '@/components/brand/logo'
 import { services } from '@/lib/data'
 
+export const dynamic = 'force-dynamic'
+
 const roles = [
   {
     href: '/sign-up/cliente',
