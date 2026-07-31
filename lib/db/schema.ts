@@ -10,6 +10,7 @@ export const user = pgTable("user", {
     .notNull(),
   image: text("image"),
   role: text("role").notNull().default("cliente"),
+  isApproved: boolean("isApproved").notNull().default(false),
   phone: text("phone"),
   createdAt: timestamp("createdAt")
     .$defaultFn(() => new Date())

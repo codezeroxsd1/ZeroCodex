@@ -33,6 +33,10 @@ const trustedOrigins = [
   process.env.V0_RUNTIME_URL,
   process.env.VERCEL_URL && `https://${process.env.VERCEL_URL}`,
   process.env.VERCEL_PROJECT_PRODUCTION_URL && `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`,
+  "http://localhost:3000",
+  "http://127.0.0.1:3000",
+  "http://localhost:3001",
+  "http://127.0.0.1:3001",
 ].filter((url) => url && typeof url === "string") as string[]
 
 const authSecret = process.env.BETTER_AUTH_SECRET || process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET || "dev-secret-change-me"
@@ -79,10 +83,33 @@ export const auth = betterAuth({
         defaultValue: "cliente",
         input: true,
       },
+      isApproved: {
+        type: "boolean",
+        required: false,
+        defaultValue: false,
+        input: false,
+      },
       phone: {
         type: "string",
         required: false,
         input: true,
+      },
+    },
+  },
+  databaseHooks: {
+    user: {
+      create: {
+        async before(user) {
+          const normalizedRole = String(user.role || "cliente").toLowerCase()
+          const isTechnician = normalizedRole === "tecnico"
+          return {
+            data: {
+              ...user,
+              role: isTechnician ? "tecnico" : normalizedRole === "admin" ? "admin" : "cliente",
+              isApproved: isTechnician ? false : true,
+            },
+          }
+        },
       },
     },
   },
@@ -91,6 +118,7 @@ export const auth = betterAuth({
       sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
       secure: process.env.NODE_ENV !== "development",
     },
+    disableCSRFCheck: process.env.NODE_ENV === "development",
     ipAddress: {
       ipAddressHeaders: ["x-forwarded-for"],
       trustedProxies: ["127.0.0.1", "::1"],

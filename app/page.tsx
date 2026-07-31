@@ -1,3 +1,5 @@
+import { promises as fs } from 'fs'
+import path from 'path'
 import Link from 'next/link'
 import {
   User,
@@ -15,22 +17,16 @@ import { services } from '@/lib/data'
 
 const roles = [
   {
-    href: '/sign-in/cliente',
+    href: '/sign-up/cliente',
     title: 'Cliente',
-    desc: 'Solicita servicios, agenda visitas, aprueba cotizaciones y sigue tu trabajo en tiempo real.',
+    desc: 'Crea tu cuenta abierta para solicitar servicios, agendar visitas y seguir tu trabajo en tiempo real.',
     icon: User,
   },
   {
     href: '/sign-in/tecnico',
     title: 'Técnico',
-    desc: 'Recibe órdenes de trabajo, completa checklists, sube fotos y captura la firma del cliente.',
+    desc: 'Acceso restringido para técnicos aprobados por la empresa; las cuentas se entregan o activan internamente.',
     icon: HardHat,
-  },
-  {
-    href: '/sign-in/admin',
-    title: 'Administrador',
-    desc: 'Controla indicadores, clientes, técnicos, agenda, cotizaciones y reportes del negocio.',
-    icon: LayoutDashboard,
   },
 ]
 
@@ -41,7 +37,33 @@ const highlights = [
   { icon: Zap, label: 'Estado en tiempo real' },
 ]
 
-export default function Page() {
+async function getSettingsValue(key: 'contactLink' | 'primaryCtaLink' | 'primaryCtaLabel' | 'secondaryCtaLink' | 'secondaryCtaLabel') {
+  try {
+    const settingsPath = path.join(process.cwd(), 'app', 'data', 'admin-settings.json')
+    const raw = await fs.readFile(settingsPath, 'utf8')
+    const parsed = JSON.parse(raw)
+    const value = typeof parsed?.[key] === 'string' ? parsed[key].trim() : ''
+    if (key === 'contactLink') return value || 'https://wa.me/56900000000'
+    if (key === 'primaryCtaLink') return value || '/cliente'
+    if (key === 'secondaryCtaLink') return value || '/admin'
+    if (key === 'primaryCtaLabel') return value || 'Solicitar servicio'
+    return value || 'Ver panel de gestión'
+  } catch {
+    if (key === 'contactLink') return 'https://wa.me/56900000000'
+    if (key === 'primaryCtaLink') return '/cliente'
+    if (key === 'secondaryCtaLink') return '/admin'
+    if (key === 'primaryCtaLabel') return 'Solicitar servicio'
+    return 'Ver panel de gestión'
+  }
+}
+
+export default async function Page() {
+  const contactLink = await getSettingsValue('contactLink')
+  const primaryCtaLink = await getSettingsValue('primaryCtaLink')
+  const primaryCtaLabel = await getSettingsValue('primaryCtaLabel')
+  const secondaryCtaLink = await getSettingsValue('secondaryCtaLink')
+  const secondaryCtaLabel = await getSettingsValue('secondaryCtaLabel')
+
   return (
     <>
       <main className="relative min-h-screen overflow-hidden">
@@ -54,11 +76,11 @@ export default function Page() {
         <header className="relative z-10 mx-auto flex w-full max-w-6xl items-center justify-between px-5 py-5">
           <Logo size={40} withText />
           <a
-            href="https://wa.me/56900000000"
-            className="inline-flex items-center gap-2 rounded-full border border-border bg-card/60 px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent"
+            href={contactLink}
+            className="inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-4 py-2 text-sm font-semibold text-primary shadow-sm transition-all hover:scale-[1.02] hover:bg-primary/20"
           >
-            <Phone className="size-4 text-primary" />
-            <span className="hidden sm:inline">Contacto</span>
+            <Phone className="size-4" />
+            <span>Contacto</span>
           </a>
         </header>
 
@@ -78,17 +100,17 @@ export default function Page() {
 
           <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
             <Link
-              href="/cliente"
+              href={primaryCtaLink}
               className="inline-flex items-center gap-2 rounded-full bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground shadow-glow transition-transform hover:scale-[1.02]"
             >
-              Solicitar servicio
+              {primaryCtaLabel}
               <ArrowRight className="size-4" />
             </Link>
             <Link
-              href="/admin"
+              href={secondaryCtaLink}
               className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-6 py-3 text-sm font-semibold transition-colors hover:bg-accent"
             >
-              Ver panel de gestión
+              {secondaryCtaLabel}
             </Link>
           </div>
 
@@ -113,7 +135,7 @@ export default function Page() {
               Explora la experiencia completa de cada usuario en la plataforma.
             </p>
           </div>
-          <div className="grid gap-4 md:grid-cols-3">
+          <div className="grid gap-4 md:grid-cols-2">
             {roles.map((role) => (
               <Link
                 key={role.href}

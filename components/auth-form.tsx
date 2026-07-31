@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { authClient } from "@/lib/auth-client"
 import { Logo } from "@/components/brand/logo"
@@ -36,6 +36,7 @@ export function AuthForm({
   signUpHref?: string
 }) {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const isSignUp = mode === "sign-up"
   const googleEnabled = Boolean(process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID)
   const [name, setName] = useState("")
@@ -45,6 +46,7 @@ export function AuthForm({
   const [role, setRole] = useState<Role>(defaultRole)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const pendingApproval = searchParams.get("pending") === "1"
 
   useEffect(() => {
     setRole(defaultRole)
@@ -91,22 +93,25 @@ export function AuthForm({
       if (!password) throw new Error("Contraseña requerida")
       
       if (isSignUp) {
+        const signupRole: Role = role
         const { error } = await authClient.signUp.email({
           email,
           password,
           name,
-          role,
+          role: signupRole,
           phone: phone || undefined,
         } as Parameters<typeof authClient.signUp.email>[0])
         
         if (error) throw new Error(error.message || "No se pudo crear la cuenta")
-        router.push(homeByRole[role])
+        router.push(homeByRole[signupRole])
       } else {
         const { data, error } = await authClient.signIn.email({ email, password })
+        console.log('[auth-form] sign-in result', { data, error })
         if (error) throw new Error(error.message || "Credenciales incorrectas")
         
         const signedRole = ((data?.user as { role?: Role })?.role as Role) || "cliente"
-        router.push(homeByRole[signedRole])
+        const isPendingTechnician = signedRole === "tecnico" && !Boolean((data?.user as { isApproved?: boolean } | undefined)?.isApproved)
+        router.push(isPendingTechnician ? `${signInHref}?pending=1` : homeByRole[signedRole])
       }
       
       router.refresh()
@@ -136,7 +141,7 @@ export function AuthForm({
           </p>
 
           <form onSubmit={handleSubmit} className="mt-6 space-y-4">
-            {!lockRole && (
+            {!lockRole && !isSignUp && (
               <div>
                 <span className="mb-1.5 block text-sm font-medium">Tipo de cuenta</span>
                 <div className="grid grid-cols-3 gap-2">
@@ -205,6 +210,12 @@ export function AuthForm({
                 className="h-11 w-full rounded-xl border border-border bg-background px-3 text-sm outline-none focus:border-primary/50"
               />
             </Field>
+
+            {pendingApproval && (
+              <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-700">
+                Tu cuenta de técnico está pendiente de aprobación por parte del administrador.
+              </div>
+            )}
 
             {error && (
               <p className="rounded-xl bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p>

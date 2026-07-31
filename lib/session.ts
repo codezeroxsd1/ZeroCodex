@@ -10,7 +10,33 @@ export type SessionUser = {
   name: string
   email: string
   role: Role
+  isApproved: boolean
   phone?: string | null
+}
+
+function isTransientAuthError(error: unknown): boolean {
+  return error instanceof Error
+    ? /ECONNRESET|EPIPE|ETIMEDOUT|socket hang up|fetch failed/i.test(error.message)
+    : false
+}
+
+async function getSessionFromAuth(headersValue: Headers): Promise<unknown> {
+  let lastError: unknown
+
+  for (let attempt = 1; attempt <= 2; attempt += 1) {
+    try {
+      return await auth.api.getSession({ headers: headersValue })
+    } catch (error) {
+      lastError = error
+      if (attempt === 2 || !isTransientAuthError(error)) {
+        throw error
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 150))
+    }
+  }
+
+  throw lastError
 }
 
 export async function getSessionUser(): Promise<SessionUser | null> {
@@ -18,14 +44,17 @@ export async function getSessionUser(): Promise<SessionUser | null> {
     const headerStore = await headers()
     const cookieStore = await cookies()
 
-    const requestHeaders = new Headers(headerStore as Headers)
-    const cookieHeader = cookieStore.toString()
+    const requestHeaders = new Headers(headerStore)
+    const cookieHeader = cookieStore
+      .getAll()
+      .map((cookie) => `${cookie.name}=${cookie.value}`)
+      .join("; ")
 
     if (cookieHeader) {
       requestHeaders.set("cookie", cookieHeader)
     }
 
-    const session = await auth.api.getSession({ headers: requestHeaders })
+    const session = await getSessionFromAuth(requestHeaders)
     if (!session?.user) return null
 
     const u = session.user as typeof session.user & { role?: string; phone?: string | null }
@@ -35,10 +64,13 @@ export async function getSessionUser(): Promise<SessionUser | null> {
       name: u.name,
       email: u.email,
       role: (u.role as Role) || "cliente",
+      isApproved: Boolean(u.isApproved),
       phone: u.phone ?? null,
     }
   } catch (error) {
-    console.error('[Better Auth] getSessionUser error:', error)
+    if (!isTransientAuthError(error)) {
+      console.error('[Better Auth] getSessionUser error:', error)
+    }
     return null
   }
 }
@@ -52,11 +84,19 @@ export async function requireUser(): Promise<SessionUser> {
 export async function requireRole(role: Role | Role[]): Promise<SessionUser> {
   const user = await requireUser()
   const allowedRoles = Array.isArray(role) ? role : [role]
-  
+
   if (!allowedRoles.includes(user.role)) {
     throw new ForbiddenError(`Rol requerido: ${allowedRoles.join(" o ")}`)
   }
-  
+
+  return user
+}
+
+export async function requireApprovedTechnician(): Promise<SessionUser> {
+  const user = await requireRole("tecnico")
+  if (!user.isApproved) {
+    throw new ForbiddenError("Cuenta pendiente de aprobación del administrador")
+  }
   return user
 }
 

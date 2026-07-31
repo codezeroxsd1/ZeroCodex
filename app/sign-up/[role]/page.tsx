@@ -12,6 +12,10 @@ export default async function SignUpRolePage({ params }: { params: Promise<{ rol
     notFound()
   }
 
+  if (role === "admin") {
+    redirect(`/sign-in/${role}`)
+  }
+
   const user = await getSessionUser()
   if (user) {
     redirect(homeByRole[user.role])
