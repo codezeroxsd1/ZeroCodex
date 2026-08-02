@@ -44,6 +44,8 @@ const trustedOrigins = [
 
 const authSecret = process.env.BETTER_AUTH_SECRET || process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET || "dev-secret-change-me"
 
+type OtpEmailType = "email-verification" | "forget-password"
+
 function normalizeDatabaseUrl(url: string | undefined) {
   if (!url) return undefined
 
@@ -61,6 +63,193 @@ function normalizeDatabaseUrl(url: string | undefined) {
 
 const databaseUrl = normalizeDatabaseUrl(process.env.DATABASE_URL)
 
+function getMailProvider() {
+  const configuredProvider = String(process.env.MAIL_PROVIDER || "").trim().toLowerCase()
+  if (configuredProvider === "resend" || process.env.RESEND_API_KEY) return "resend"
+  if (configuredProvider === "sendgrid" || process.env.SENDGRID_API_KEY) return "sendgrid"
+  return "smtp"
+}
+
+function getFromAddress(defaultAddress?: string) {
+  const from = process.env.EMAIL_FROM || process.env.SMTP_FROM || defaultAddress || "no-reply@localhost"
+  return from.includes("<") ? from : `ZeroCodex <${from}>`
+}
+
+function getFromEmailAddress(from: string | undefined) {
+  if (!from) return undefined
+  const match = from.match(/<([^>]+)>/)
+  return match?.[1] ?? from
+}
+
+async function sendOtpEmail({ email, otp, type }: { email: string; otp: string; type: OtpEmailType }) {
+  if (type !== "email-verification" && type !== "forget-password") return
+
+  const subject = type === "forget-password" ? "Recupera tu contraseña" : "Código de verificación de correo"
+  const text = type === "forget-password"
+    ? `Tu código para recuperar tu contraseña es: ${otp}\n\nIngresa este código en la aplicación y crea una nueva contraseña.`
+    : `Tu código de verificación es: ${otp}\n\nIngresa este código en la aplicación para activar tu cuenta.`
+  const html = type === "forget-password"
+    ? `<p>Tu código para recuperar tu contraseña es:</p><h2>${otp}</h2><p>Ingresa este código en la aplicación y crea una nueva contraseña.</p>`
+    : `<p>Tu código de verificación es:</p><h2>${otp}</h2><p>Ingresa este código en la aplicación para activar tu cuenta.</p>`
+
+  const provider = getMailProvider()
+  const from = process.env.EMAIL_FROM || process.env.SMTP_FROM || process.env.SMTP_USER || "no-reply@localhost"
+  const fromDisplay = getFromAddress(from)
+  const fromEmail = getFromEmailAddress(fromDisplay)
+
+  if (provider === "resend") {
+    const apiKey = process.env.RESEND_API_KEY
+    if (!apiKey || !fromEmail) {
+      console.warn("RESEND_API_KEY or EMAIL_FROM not configured; OTP delivery skipped", { email, type })
+      return
+    }
+
+    try {
+      const response = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          from: fromDisplay,
+          to: [email],
+          subject,
+          text,
+          html,
+        }),
+      })
+
+      if (!response.ok) {
+        const errorText = await response.text()
+        throw new Error(errorText || `Resend returned ${response.status}`)
+      }
+      return
+    } catch (error) {
+      if (process.env.NODE_ENV === "production") {
+        console.warn("Resend OTP delivery failed; OTP is available in logs only for now", { email, type, otp, error })
+        return
+      }
+      throw error
+    }
+  }
+
+  if (provider === "sendgrid") {
+    const apiKey = process.env.SENDGRID_API_KEY
+    if (!apiKey || !fromEmail) {
+      console.warn("SENDGRID_API_KEY or EMAIL_FROM not configured; OTP delivery skipped", { email, type })
+      return
+    }
+
+    try {
+      const response = await fetch("https://api.sendgrid.com/v3/mail/send", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          personalizations: [{ to: [{ email }] }],
+          from: { email: fromEmail },
+          subject,
+          content: [
+            { type: "text/plain", value: text },
+            { type: "text/html", value: html },
+          ],
+        }),
+      })
+
+      if (!response.ok) {
+        const errorText = await response.text()
+        throw new Error(errorText || `SendGrid returned ${response.status}`)
+      }
+      return
+    } catch (error) {
+      if (process.env.NODE_ENV === "production") {
+        console.warn("SendGrid OTP delivery failed; OTP is available in logs only for now", { email, type, otp, error })
+        return
+      }
+      throw error
+    }
+  }
+
+  const host = process.env.SMTP_HOST
+  const port = Number(process.env.SMTP_PORT || 587)
+  const user = process.env.SMTP_USER
+  const pass = process.env.SMTP_PASS
+
+  if (!host || !user || !pass || !fromEmail) {
+    const devMessage = `SMTP no configurado. OTP local para ${email}: ${otp}`
+    if (process.env.NODE_ENV !== "production") {
+      console.warn(devMessage)
+    } else {
+      console.warn("SMTP no configurado, no se envía el código de verificación", { email, type })
+    }
+    return
+  }
+
+  const useGmailService = host === "smtp.gmail.com" || host === "smtp-relay.gmail.com"
+  const createTransporter = (overridePort?: number, secureOverride?: boolean) =>
+    nodemailer.createTransport({
+      ...(useGmailService ? { service: "gmail" } : { host, port: overridePort ?? port, secure: secureOverride ?? port === 465 }),
+      requireTLS: port === 587,
+      auth: { user, pass },
+      connectionTimeout: 10000,
+      greetingTimeout: 10000,
+      socketTimeout: 10000,
+      logger: process.env.NODE_ENV !== "production",
+      debug: process.env.NODE_ENV !== "production",
+      tls: {
+        rejectUnauthorized: false,
+      },
+    })
+
+  let transporter = createTransporter()
+  let lastError: unknown = null
+
+  for (const attempt of [
+    { port: 587, secure: false },
+    { port: 465, secure: true },
+  ]) {
+    if (attempt.port !== port) {
+      transporter = createTransporter(attempt.port, attempt.secure)
+    }
+
+    try {
+      await transporter.sendMail({
+        from: fromDisplay,
+        to: email,
+        subject,
+        text,
+        html,
+      })
+      lastError = null
+      break
+    } catch (mailError) {
+      lastError = mailError
+      console.warn(`SMTP attempt failed on port ${attempt.port}`, { email, type, host, user, port: attempt.port, error: mailError })
+    }
+  }
+
+  if (lastError) {
+    if (process.env.NODE_ENV === "production") {
+      console.warn("SMTP fallback activated; OTP is available in logs only for now", { email, type, otp })
+      return
+    }
+
+    console.error("Error enviando OTP por SMTP", {
+      email,
+      type,
+      host,
+      port,
+      user,
+      from: fromDisplay,
+      error: lastError,
+    })
+    throw lastError
+  }
+}
+
 void ensureTestUsersReady().catch((error) => {
   console.warn("No se pudo restaurar la verificación de cuentas de prueba", error)
 })
@@ -75,93 +264,7 @@ export const auth = betterAuth({
       otpLength: 6,
       expiresIn: 300,
       sendVerificationOTP: async ({ email, otp, type }) => {
-        if (type !== "email-verification" && type !== "forget-password") return
-
-        const host = process.env.SMTP_HOST
-        const port = Number(process.env.SMTP_PORT || 587)
-        const user = process.env.SMTP_USER
-        const pass = process.env.SMTP_PASS
-        const from = process.env.SMTP_FROM || user
-
-        if (!host || !user || !pass || !from) {
-          const devMessage = `SMTP no configurado. OTP local para ${email}: ${otp}`
-          if (process.env.NODE_ENV !== "production") {
-            console.warn(devMessage)
-          } else {
-            console.warn("SMTP no configurado, no se envía el código de verificación", { email, type })
-          }
-          return
-        }
-
-        const useGmailService = host === "smtp.gmail.com" || host === "smtp-relay.gmail.com"
-        const createTransporter = (overridePort?: number, secureOverride?: boolean) =>
-          nodemailer.createTransport({
-            ...(useGmailService ? { service: "gmail" } : { host, port: overridePort ?? port, secure: secureOverride ?? port === 465 }),
-            requireTLS: port === 587,
-            auth: { user, pass },
-            connectionTimeout: 10000,
-            greetingTimeout: 10000,
-            socketTimeout: 10000,
-            logger: process.env.NODE_ENV !== "production",
-            debug: process.env.NODE_ENV !== "production",
-            tls: {
-              rejectUnauthorized: false,
-            },
-          })
-
-        const fromAddress = from.includes("<") ? from : `"Zero Industries" <${from}>`
-        const subject = type === "forget-password" ? "Recupera tu contraseña" : "Código de verificación de correo"
-        const text = type === "forget-password"
-          ? `Tu código para recuperar tu contraseña es: ${otp}\n\nIngresa este código en la aplicación y crea una nueva contraseña.`
-          : `Tu código de verificación es: ${otp}\n\nIngresa este código en la aplicación para activar tu cuenta.`
-        const html = type === "forget-password"
-          ? `<p>Tu código para recuperar tu contraseña es:</p><h2>${otp}</h2><p>Ingresa este código en la aplicación y crea una nueva contraseña.</p>`
-          : `<p>Tu código de verificación es:</p><h2>${otp}</h2><p>Ingresa este código en la aplicación para activar tu cuenta.</p>`
-
-        let transporter = createTransporter()
-        let lastError: unknown = null
-
-        for (const attempt of [
-          { port: 587, secure: false },
-          { port: 465, secure: true },
-        ]) {
-          if (attempt.port !== port) {
-            transporter = createTransporter(attempt.port, attempt.secure)
-          }
-
-          try {
-            await transporter.sendMail({
-              from: fromAddress,
-              to: email,
-              subject,
-              text,
-              html,
-            })
-            lastError = null
-            break
-          } catch (mailError) {
-            lastError = mailError
-            console.warn(`SMTP attempt failed on port ${attempt.port}`, { email, type, host, user, port: attempt.port, error: mailError })
-          }
-        }
-
-        if (lastError) {
-          if (process.env.NODE_ENV === "production") {
-            console.warn("SMTP fallback activated; OTP is available in logs only for now", { email, type, otp })
-            return
-          }
-
-          console.error("Error enviando OTP por SMTP", {
-            email,
-            type,
-            host,
-            port,
-            user,
-            from: fromAddress,
-            error: lastError,
-          })
-          throw lastError
-        }
+        await sendOtpEmail({ email, otp, type })
       },
     }),
     nextCookies(),
