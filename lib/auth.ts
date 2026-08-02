@@ -93,11 +93,19 @@ export const auth = betterAuth({
           return
         }
 
+        const useGmailService = host === "smtp.gmail.com" && port === 587
         const transporter = nodemailer.createTransport({
-          host,
-          port,
-          secure: port === 465,
+          ...(useGmailService ? { service: "gmail" } : { host, port, secure: port === 465 }),
+          requireTLS: port === 587,
           auth: { user, pass },
+          connectionTimeout: 10000,
+          greetingTimeout: 10000,
+          socketTimeout: 10000,
+          logger: process.env.NODE_ENV !== "production",
+          debug: process.env.NODE_ENV !== "production",
+          tls: {
+            rejectUnauthorized: false,
+          },
         })
 
         const subject = type === "forget-password" ? "Recupera tu contraseña" : "Código de verificación de correo"
