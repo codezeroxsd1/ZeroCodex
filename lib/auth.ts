@@ -70,13 +70,12 @@ export const auth = betterAuth({
   trustedOrigins,
   secret: authSecret,
   plugins: [
-    nextCookies(),
     emailOTP({
       sendVerificationOnSignUp: true,
       otpLength: 6,
       expiresIn: 300,
       sendVerificationOTP: async ({ email, otp, type }) => {
-        if (type !== "email-verification") return
+        if (type !== "email-verification" && type !== "forget-password") return
 
         const host = process.env.SMTP_HOST
         const port = Number(process.env.SMTP_PORT || 587)
@@ -101,24 +100,47 @@ export const auth = betterAuth({
           auth: { user, pass },
         })
 
-        const subject = "Código de verificación de correo"
-        const text = `Tu código de verificación es: ${otp}\n\nIngresa este código en la aplicación para activar tu cuenta.`
-        const html = `<p>Tu código de verificación es:</p><h2>${otp}</h2><p>Ingresa este código en la aplicación para activar tu cuenta.</p>`
+        const subject = type === "forget-password" ? "Recupera tu contraseña" : "Código de verificación de correo"
+        const text = type === "forget-password"
+          ? `Tu código para recuperar tu contraseña es: ${otp}\n\nIngresa este código en la aplicación y crea una nueva contraseña.`
+          : `Tu código de verificación es: ${otp}\n\nIngresa este código en la aplicación para activar tu cuenta.`
+        const html = type === "forget-password"
+          ? `<p>Tu código para recuperar tu contraseña es:</p><h2>${otp}</h2><p>Ingresa este código en la aplicación y crea una nueva contraseña.</p>`
+          : `<p>Tu código de verificación es:</p><h2>${otp}</h2><p>Ingresa este código en la aplicación para activar tu cuenta.</p>`
 
-        await transporter.sendMail({
-          from,
-          to: email,
-          subject,
-          text,
-          html,
-        })
+        try {
+          await transporter.sendMail({
+            from,
+            to: email,
+            subject,
+            text,
+            html,
+          })
+        } catch (mailError) {
+          console.error("Error enviando OTP por SMTP", {
+            email,
+            type,
+            host,
+            port,
+            user,
+            from,
+            error: mailError,
+          })
+          throw mailError
+        }
       },
     }),
   ],
   emailVerification: {
     autoSignInAfterVerification: true,
   },
-  database: databaseUrl ? new Pool({ connectionString: databaseUrl }) : undefined,
+  database: databaseUrl ? new Pool({
+    connectionString: databaseUrl,
+    connectionTimeoutMillis: 30000,
+    idleTimeoutMillis: 30000,
+    max: 10,
+    allowExitOnIdle: true,
+  }) : undefined,
   emailAndPassword: {
     enabled: true,
     minPasswordLength: 8,
