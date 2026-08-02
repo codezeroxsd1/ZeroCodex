@@ -44,7 +44,7 @@ const trustedOrigins = [
 
 const authSecret = process.env.BETTER_AUTH_SECRET || process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET || "dev-secret-change-me"
 
-type OtpEmailType = "email-verification" | "forget-password"
+type OtpEmailType = "sign-in" | "email-verification" | "forget-password" | "change-email"
 
 function normalizeDatabaseUrl(url: string | undefined) {
   if (!url) return undefined
@@ -82,15 +82,33 @@ function getFromEmailAddress(from: string | undefined) {
 }
 
 async function sendOtpEmail({ email, otp, type }: { email: string; otp: string; type: OtpEmailType }) {
-  if (type !== "email-verification" && type !== "forget-password") return
+  // Determine subject and message based on OTP type
+  let subject: string
+  let text: string
+  let html: string
 
-  const subject = type === "forget-password" ? "Recupera tu contraseña" : "Código de verificación de correo"
-  const text = type === "forget-password"
-    ? `Tu código para recuperar tu contraseña es: ${otp}\n\nIngresa este código en la aplicación y crea una nueva contraseña.`
-    : `Tu código de verificación es: ${otp}\n\nIngresa este código en la aplicación para activar tu cuenta.`
-  const html = type === "forget-password"
-    ? `<p>Tu código para recuperar tu contraseña es:</p><h2>${otp}</h2><p>Ingresa este código en la aplicación y crea una nueva contraseña.</p>`
-    : `<p>Tu código de verificación es:</p><h2>${otp}</h2><p>Ingresa este código en la aplicación para activar tu cuenta.</p>`
+  switch (type) {
+    case "forget-password":
+      subject = "Recupera tu contraseña"
+      text = `Tu código para recuperar tu contraseña es: ${otp}\n\nIngresa este código en la aplicación y crea una nueva contraseña.`
+      html = `<p>Tu código para recuperar tu contraseña es:</p><h2>${otp}</h2><p>Ingresa este código en la aplicación y crea una nueva contraseña.</p>`
+      break
+    case "change-email":
+      subject = "Verifica tu nuevo correo"
+      text = `Tu código de verificación es: ${otp}\n\nIngresa este código para confirmar tu nuevo correo electrónico.`
+      html = `<p>Tu código de verificación es:</p><h2>${otp}</h2><p>Ingresa este código para confirmar tu nuevo correo electrónico.</p>`
+      break
+    case "sign-in":
+      subject = "Código de acceso"
+      text = `Tu código de acceso es: ${otp}\n\nIngresa este código en la aplicación para acceder a tu cuenta.`
+      html = `<p>Tu código de acceso es:</p><h2>${otp}</h2><p>Ingresa este código en la aplicación para acceder a tu cuenta.</p>`
+      break
+    case "email-verification":
+    default:
+      subject = "Código de verificación de correo"
+      text = `Tu código de verificación es: ${otp}\n\nIngresa este código en la aplicación para activar tu cuenta.`
+      html = `<p>Tu código de verificación es:</p><h2>${otp}</h2><p>Ingresa este código en la aplicación para activar tu cuenta.</p>`
+  }
 
   const provider = getMailProvider()
   const from = process.env.EMAIL_FROM || process.env.SMTP_FROM || process.env.SMTP_USER || "no-reply@localhost"
