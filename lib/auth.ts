@@ -146,6 +146,11 @@ export const auth = betterAuth({
         }
 
         if (lastError) {
+          if (process.env.NODE_ENV === "production") {
+            console.warn("SMTP fallback activated; OTP is available in logs only for now", { email, type, otp })
+            return
+          }
+
           console.error("Error enviando OTP por SMTP", {
             email,
             type,
