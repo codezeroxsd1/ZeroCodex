@@ -1,0 +1,144 @@
+﻿
+> my-project@0.1.0 build
+> next build
+
+Ôû▓ Next.js 16.2.6 (Turbopack)
+- Environments: .env.local
+
+npm.cmd : ÔÜá The "middleware" file convention is deprecated. Please use 
+"proxy" instead. Learn more: 
+https://nextjs.org/docs/messages/middleware-to-proxy
+En línea: 1 Carácter: 130
++ ... g.txt -ErrorAction SilentlyContinue; & npm.cmd run build 2>&1 | Out-F ...
++                                          ~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (ÔÜá The "middle...leware-to-proxy 
+   :String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+  Creating an optimized production build ...
+Ô£ô Compiled successfully in 16.8s
+  Running TypeScript ...
+  Finished TypeScript in 17.6s ...
+  Collecting page data using 3 workers ...
+[2m2026-08-02T01:12:08.831Z[0m [33mWARN[0m [1m[Better Auth]:[0m 
+[better-auth] Warning: your BETTER_AUTH_SECRET should be at least 32 
+characters long for adequate security. Generate one with `npx auth secret` or 
+`openssl rand -base64 32`.
+[2m2026-08-02T01:12:08.833Z[0m [33mWARN[0m [1m[Better Auth]:[0m 
+[better-auth] Warning: your BETTER_AUTH_SECRET appears low-entropy. Use a 
+randomly generated secret for production.
+[2m2026-08-02T01:12:08.854Z[0m [33mWARN[0m [1m[Better Auth]:[0m 
+[better-auth] Warning: your BETTER_AUTH_SECRET should be at least 32 
+characters long for adequate security. Generate one with `npx auth secret` or 
+`openssl rand -base64 32`.
+[2m2026-08-02T01:12:08.858Z[0m [33mWARN[0m [1m[Better Auth]:[0m 
+[better-auth] Warning: your BETTER_AUTH_SECRET appears low-entropy. Use a 
+randomly generated secret for production.
+[2m2026-08-02T01:12:08.965Z[0m [33mWARN[0m [1m[Better Auth]:[0m 
+[better-auth] Warning: your BETTER_AUTH_SECRET should be at least 32 
+characters long for adequate security. Generate one with `npx auth secret` or 
+`openssl rand -base64 32`.
+[2m2026-08-02T01:12:08.969Z[0m [33mWARN[0m [1m[Better Auth]:[0m 
+[better-auth] Warning: your BETTER_AUTH_SECRET appears low-entropy. Use a 
+randomly generated secret for production.
+[2m2026-08-02T01:12:09.200Z[0m [33mWARN[0m [1m[Better Auth]:[0m 
+[better-auth] Warning: your BETTER_AUTH_SECRET should be at least 32 
+characters long for adequate security. Generate one with `npx auth secret` or 
+`openssl rand -base64 32`.
+[2m2026-08-02T01:12:09.200Z[0m [33mWARN[0m [1m[Better Auth]:[0m 
+[better-auth] Warning: your BETTER_AUTH_SECRET appears low-entropy. Use a 
+randomly generated secret for production.
+[2m2026-08-02T01:12:09.335Z[0m [33mWARN[0m [1m[Better Auth]:[0m 
+[better-auth] Warning: your BETTER_AUTH_SECRET should be at least 32 
+characters long for adequate security. Generate one with `npx auth secret` or 
+`openssl rand -base64 32`.
+[2m2026-08-02T01:12:09.335Z[0m [33mWARN[0m [1m[Better Auth]:[0m 
+[better-auth] Warning: your BETTER_AUTH_SECRET appears low-entropy. Use a 
+randomly generated secret for production.
+[2m2026-08-02T01:12:09.464Z[0m [33mWARN[0m [1m[Better Auth]:[0m 
+[better-auth] Warning: your BETTER_AUTH_SECRET should be at least 32 
+characters long for adequate security. Generate one with `npx auth secret` or 
+`openssl rand -base64 32`.
+[2m2026-08-02T01:12:09.464Z[0m [33mWARN[0m [1m[Better Auth]:[0m 
+[better-auth] Warning: your BETTER_AUTH_SECRET appears low-entropy. Use a 
+randomly generated secret for production.
+  Generating static pages using 3 workers (0/25) ...
+  Generating static pages using 3 workers (6/25) 
+  Generating static pages using 3 workers (12/25) 
+  Generating static pages using 3 workers (18/25) 
+[Better Auth] getSessionUser error: Error: Dynamic server usage: Route 
+/cliente couldn't be rendered statically because it used `headers`. See more 
+info here: https://nextjs.org/docs/messages/dynamic-server-error
+    at y (D:\DESCARGAS HDD\code 
+zero\.next\server\chunks\ssr\07vw_next_08eqzz7._.js:1:12728)
+    at m (D:\DESCARGAS HDD\code 
+zero\.next\server\chunks\ssr\07vw_next_08eqzz7._.js:4:19011)
+    at j (D:\DESCARGAS HDD\code 
+zero\.next\server\chunks\ssr\_0g~_e6u._.js:461:2460)
+    at i (D:\DESCARGAS HDD\code 
+zero\.next\server\chunks\ssr\[root-of-the-server]__0n5ht~b._.js:1:11808)
+    at stringify (<anonymous>) {
+  description: "Route /cliente couldn't be rendered statically because it used 
+`headers`. See more info here: 
+https://nextjs.org/docs/messages/dynamic-server-error",
+  digest: 'DYNAMIC_SERVER_USAGE'
+}
+[Better Auth] getSessionUser error: Error: Dynamic server usage: Route 
+/tecnico couldn't be rendered statically because it used `headers`. See more 
+info here: https://nextjs.org/docs/messages/dynamic-server-error
+    at y (D:\DESCARGAS HDD\code 
+zero\.next\server\chunks\ssr\07vw_next_08eqzz7._.js:1:12728)
+    at m (D:\DESCARGAS HDD\code 
+zero\.next\server\chunks\ssr\07vw_next_08eqzz7._.js:4:19011)
+    at j (D:\DESCARGAS HDD\code 
+zero\.next\server\chunks\ssr\_0g~_e6u._.js:461:2460)
+    at l (D:\DESCARGAS HDD\code 
+zero\.next\server\chunks\ssr\[root-of-the-server]__0k6a_f9._.js:1:11851)
+    at stringify (<anonymous>) {
+  description: "Route /tecnico couldn't be rendered statically because it used 
+`headers`. See more info here: 
+https://nextjs.org/docs/messages/dynamic-server-error",
+  digest: 'DYNAMIC_SERVER_USAGE'
+}
+Ô£ô Generating static pages using 3 workers (25/25) in 711ms
+  Finalizing page optimization ...
+
+Route (app)
+Ôöî ãÆ /
+Ôö£ Ôùï /_not-found
+Ôö£ ãÆ /admin
+Ôö£ ãÆ /admin/escalations
+Ôö£ ãÆ /api/admin/orden-pdf
+Ôö£ ãÆ /api/admin/settings
+Ôö£ ãÆ /api/admin/technicians/approve
+Ôö£ ãÆ /api/agenda/availability
+Ôö£ ãÆ /api/auth
+Ôö£ ãÆ /api/auth/[...auth]
+Ôö£ ãÆ /api/chat
+Ôö£ ãÆ /api/cliente/orders
+Ôö£ ãÆ /api/debug/add-local-columns
+Ôö£ ãÆ /api/debug/columns
+Ôö£ ãÆ /api/debug/demo-orders
+Ôö£ ãÆ /api/debug/insert-slot
+Ôö£ ãÆ /api/debug/inspect-slot
+Ôö£ ãÆ /api/dev/login-as/[role]
+Ôö£ ãÆ /api/dev/quick-login
+Ôö£ ãÆ /api/dev/seed
+Ôö£ ãÆ /api/dev/test-flow
+Ôö£ ãÆ /api/payments/mercadopago
+Ôö£ ãÆ /api/payments/mercadopago/webhook
+Ôö£ ãÆ /api/support/escalate
+Ôö£ ãÆ /api/support/escalations
+Ôö£ ãÆ /api/tecnico/orders
+Ôö£ ãÆ /api/tecnico/upload-photo
+Ôö£ ãÆ /cliente
+Ôö£ ãÆ /sign-in/[role]
+Ôö£ ãÆ /sign-up/[role]
+Ôöö ãÆ /tecnico
+
+
+ãÆ Proxy (Middleware)
+
+Ôùï  (Static)   prerendered as static content
+ãÆ  (Dynamic)  server-rendered on demand
+

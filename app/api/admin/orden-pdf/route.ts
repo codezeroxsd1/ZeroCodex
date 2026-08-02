@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { pool } from '@/lib/db'
+import { saveUploadedAsset } from '@/lib/storage'
 
 async function streamToBuffer(stream: ReadableStream<Uint8Array>) {
   const reader = stream.getReader()
@@ -50,15 +51,8 @@ export async function POST(request: Request) {
     const filename = `orden-${orderId}-${Date.now()}.pdf`
     const buffer = Buffer.from(await uploadedFile.arrayBuffer())
 
-    // Guardar el PDF en public/uploads/pdfs para mantener organizacion
-    const fs = await import('fs/promises')
-    const path = await import('path')
-    const uploadsDir = path.join(process.cwd(), 'public', 'uploads', 'pdfs')
-    await fs.mkdir(uploadsDir, { recursive: true })
-    const targetPath = path.join(uploadsDir, filename)
-    await fs.writeFile(targetPath, buffer)
-
-    const pdfUrl = `/uploads/pdfs/${filename}`
+    const asset = await saveUploadedAsset(buffer, filename, uploadedFile.type || 'application/pdf', 'pdfs')
+    const pdfUrl = asset.url
     const client = await pool.connect()
     try {
       await client.query('ALTER TABLE orden ADD COLUMN IF NOT EXISTS "pdfUrl" text')

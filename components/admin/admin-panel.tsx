@@ -861,6 +861,8 @@ function Dashboard({
 }
 
 function Clientes({ clients = [], orders = [] }: { clients: any[]; orders: any[] }) {
+  const [clientFilter, setClientFilter] = useState<'all' | 'empresa' | 'particular'>('all')
+
   const clientStats = useMemo(() => {
     const stats: Record<string, { jobs: number; spent: number; lastService: string }> = {}
     for (const c of clients) {
@@ -895,52 +897,94 @@ function Clientes({ clients = [], orders = [] }: { clients: any[]; orders: any[]
     return stats
   }, [clients, orders])
 
+  const filteredClients = useMemo(() => {
+    return clients.filter((c) => {
+      const type = String(c.clientType || 'particular').toLowerCase()
+      if (clientFilter === 'all') return true
+      return type === clientFilter
+    })
+  }, [clients, clientFilter])
+
+  const filterCounts = useMemo(() => {
+    const empresa = clients.filter((c) => String(c.clientType || 'particular').toLowerCase() === 'empresa').length
+    const particular = clients.filter((c) => String(c.clientType || 'particular').toLowerCase() !== 'empresa').length
+    return { total: clients.length, empresa, particular }
+  }, [clients])
+
   return (
     <div>
       <PageTitle title="Clientes" subtitle="Gestión de clientes y su historial" />
-      {clients.length === 0 && (
+      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="text-sm text-muted-foreground">Filtrar clientes por tipo</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {[
+            { id: 'all', label: `Todos (${filterCounts.total})` },
+            { id: 'empresa', label: `Empresa (${filterCounts.empresa})` },
+            { id: 'particular', label: `Particular (${filterCounts.particular})` },
+          ].map((option) => (
+            <button
+              key={option.id}
+              type="button"
+              onClick={() => setClientFilter(option.id as 'all' | 'empresa' | 'particular')}
+              className={cn(
+                'rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors',
+                clientFilter === option.id
+                  ? 'border-primary bg-primary/10 text-primary'
+                  : 'border-border bg-background text-muted-foreground hover:border-primary/50 hover:text-primary',
+              )}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {filteredClients.length === 0 ? (
         <div className="mb-4 rounded-2xl border border-border bg-card p-4 text-sm text-muted-foreground">
-          No hay clientes que coincidan con la búsqueda.
+          No hay clientes que coincidan con el filtro seleccionado.
+        </div>
+      ) : (
+        <div className="overflow-hidden rounded-2xl border border-border bg-card">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border text-left text-xs text-muted-foreground">
+                <th className="px-4 py-3 font-medium">Cliente</th>
+                <th className="px-4 py-3 font-medium">Tipo</th>
+                <th className="px-4 py-3 font-medium">Calif.</th>
+                <th className="hidden px-4 py-3 font-medium sm:table-cell">Trabajos</th>
+                <th className="px-4 py-3 font-medium">Facturado</th>
+                <th className="hidden px-4 py-3 font-medium md:table-cell">Último</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredClients.map((c) => {
+                const stats = clientStats[c.id] ?? { jobs: 0, spent: 0, lastService: 'Sin registro' }
+                return (
+                  <tr key={c.id} className="border-b border-border last:border-0">
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-3">
+                        <span className="flex size-8 items-center justify-center rounded-full bg-secondary text-xs font-bold">
+                          {c.name.slice(0, 2).toUpperCase()}
+                        </span>
+                        <span className="font-medium">{c.name}</span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className="rounded-full bg-secondary px-2.5 py-1 text-xs">{c.type}</span>
+                    </td>
+                    <td className="px-4 py-3 font-medium flex items-center gap-2"><Star className="size-3.5 fill-warning text-warning" /> {c.rating ?? 0}</td>
+                    <td className="hidden px-4 py-3 text-muted-foreground sm:table-cell">{stats.jobs}</td>
+                    <td className="px-4 py-3 font-medium">{formatCLP(stats.spent)}</td>
+                    <td className="hidden px-4 py-3 text-muted-foreground md:table-cell">{stats.lastService}</td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
         </div>
       )}
-      <div className="overflow-hidden rounded-2xl border border-border bg-card">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-border text-left text-xs text-muted-foreground">
-              <th className="px-4 py-3 font-medium">Cliente</th>
-              <th className="px-4 py-3 font-medium">Tipo</th>
-              <th className="px-4 py-3 font-medium">Calif.</th>
-              <th className="hidden px-4 py-3 font-medium sm:table-cell">Trabajos</th>
-              <th className="px-4 py-3 font-medium">Facturado</th>
-              <th className="hidden px-4 py-3 font-medium md:table-cell">Último</th>
-            </tr>
-          </thead>
-          <tbody>
-            {clients.map((c) => {
-              const stats = clientStats[c.id] ?? { jobs: 0, spent: 0, lastService: 'Sin registro' }
-              return (
-                <tr key={c.id} className="border-b border-border last:border-0">
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-3">
-                      <span className="flex size-8 items-center justify-center rounded-full bg-secondary text-xs font-bold">
-                        {c.name.slice(0, 2).toUpperCase()}
-                      </span>
-                      <span className="font-medium">{c.name}</span>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className="rounded-full bg-secondary px-2.5 py-1 text-xs">{c.type}</span>
-                  </td>
-                  <td className="px-4 py-3 font-medium flex items-center gap-2"><Star className="size-3.5 fill-warning text-warning" /> {c.rating ?? 0}</td>
-                  <td className="hidden px-4 py-3 text-muted-foreground sm:table-cell">{stats.jobs}</td>
-                  <td className="px-4 py-3 font-medium">{formatCLP(stats.spent)}</td>
-                  <td className="hidden px-4 py-3 text-muted-foreground md:table-cell">{stats.lastService}</td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
-      </div>
     </div>
   )
 }

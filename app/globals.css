@@ -105,6 +105,25 @@
   .shadow-glow {
     box-shadow: 0 0 0 1px oklch(0.83 0.24 138 / 0.2), 0 8px 40px -8px oklch(0.83 0.24 138 / 0.35);
   }
+
+  .empresa-theme {
+    --primary: oklch(0.77 0.35 252);
+    --primary-foreground: oklch(0.97 0.01 250);
+    --sidebar-primary: oklch(0.77 0.35 252);
+    --sidebar-primary-foreground: oklch(0.97 0.01 250);
+    --sidebar-ring: oklch(0.77 0.35 252);
+    --ring: oklch(0.77 0.35 252);
+    --chart-1: oklch(0.77 0.35 252);
+    --chart-2: oklch(0.65 0.32 250);
+  }
+
+  .empresa-theme .text-glow {
+    text-shadow: 0 0 24px oklch(0.77 0.35 252 / 0.45);
+  }
+
+  .empresa-theme .shadow-glow {
+    box-shadow: 0 0 0 1px oklch(0.77 0.35 252 / 0.2), 0 8px 40px -8px oklch(0.77 0.35 252 / 0.35);
+  }
 }
 
 /* touch to trigger hot-reload */

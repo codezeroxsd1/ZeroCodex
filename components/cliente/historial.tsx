@@ -1,8 +1,9 @@
 'use client'
 
-import { ShieldCheck, Download, FileText } from 'lucide-react'
+import { ShieldCheck, Download, FileText, Receipt, FileIcon } from 'lucide-react'
 import { formatCLP } from '@/lib/data'
 import { cn } from '@/lib/utils'
+import { buildOrderPdfHtml, openOrderPdf } from '@/lib/pdf'
 
 export function ClienteHistorial({ orders }: { orders: any[] }) {
   const normalizeOrderStatus = (order: any) => {
@@ -70,6 +71,14 @@ export function ClienteHistorial({ orders }: { orders: any[] }) {
     return 'Motivo disponible'
   }
 
+  const getDocumentoLabel = (pdfUrl: string | null | undefined) => {
+    if (!pdfUrl) return 'boleta / factura'
+    const lower = String(pdfUrl).toLowerCase()
+    if (lower.includes('factura')) return 'factura'
+    if (lower.includes('boleta')) return 'boleta'
+    return 'boleta / factura'
+  }
+
   return (
     <div className="space-y-4 p-4 lg:p-6">
       <div className="mx-auto max-w-6xl space-y-4">
@@ -116,19 +125,69 @@ export function ClienteHistorial({ orders }: { orders: any[] }) {
                 </div>
 
                 {normalizeOrderStatus(order) === 'finalizado' ? (
-                  <div className="mt-3 flex gap-2">
-                    <button
-                      className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-secondary py-2 text-xs font-medium"
-                      disabled={!order.pdfUrl}
-                    >
-                      <FileText className="size-3.5 text-primary" /> Ver informe
-                    </button>
-                    <button
-                      className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-secondary py-2 text-xs font-medium"
-                      disabled={!order.pdfUrl}
-                    >
-                      <Download className="size-3.5 text-primary" /> PDF
-                    </button>
+                  <div className="mt-3 space-y-2">
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      <button
+                        type="button"
+                        onClick={() => openOrderPdf(order)}
+                        className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-secondary py-2 text-xs font-medium"
+                      >
+                        <FileText className="size-3.5 text-primary" /> Ver informe
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const printWindow = window.open('', '_blank', 'width=900,height=700')
+                          if (!printWindow) return
+                          printWindow.document.write(buildOrderPdfHtml(order))
+                          printWindow.document.close()
+                          printWindow.focus()
+                          printWindow.print()
+                        }}
+                        className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-secondary py-2 text-xs font-medium"
+                      >
+                        <Download className="size-3.5 text-primary" /> Descargar informe
+                      </button>
+                    </div>
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      <a
+                        href={order.pdfUrl || '#'}
+                        target={order.pdfUrl ? '_blank' : undefined}
+                        rel="noreferrer"
+                        className={cn(
+                          'flex w-full items-center justify-center gap-1.5 rounded-xl border px-2 py-2 text-xs font-semibold',
+                          order.pdfUrl
+                            ? 'border-primary/20 bg-primary/5 text-primary'
+                            : 'cursor-not-allowed border-border bg-muted/5 text-muted-foreground opacity-50',
+                        )}
+                        aria-disabled={!order.pdfUrl}
+                      >
+                        {getDocumentoLabel(order.pdfUrl) === 'factura' ? (
+                          <FileIcon className="size-3.5" />
+                        ) : (
+                          <Receipt className="size-3.5" />
+                        )}
+                        Ver {getDocumentoLabel(order.pdfUrl)}
+                      </a>
+                      <a
+                        href={order.pdfUrl || '#'}
+                        download={order.pdfUrl ? `${getDocumentoLabel(order.pdfUrl)}-${order.id}.pdf` : undefined}
+                        className={cn(
+                          'flex w-full items-center justify-center gap-1.5 rounded-xl border px-2 py-2 text-xs font-semibold',
+                          order.pdfUrl
+                            ? 'border-primary/20 bg-primary/5 text-primary'
+                            : 'cursor-not-allowed border-border bg-muted/5 text-muted-foreground opacity-50',
+                        )}
+                        aria-disabled={!order.pdfUrl}
+                      >
+                        {getDocumentoLabel(order.pdfUrl) === 'factura' ? (
+                          <FileIcon className="size-3.5" />
+                        ) : (
+                          <Download className="size-3.5" />
+                        )}
+                        Descargar {getDocumentoLabel(order.pdfUrl)}
+                      </a>
+                    </div>
                   </div>
                 ) : (
                   <div className="mt-3 space-y-2">

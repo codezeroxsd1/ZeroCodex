@@ -32,6 +32,13 @@ try {
       image text,
       role text not null default 'cliente',
       phone text,
+      "clientType" text not null default 'particular',
+      "companyName" text,
+      "companyRut" text,
+      "companyEmail" text,
+      "companyPhone" text,
+      "companyAddress" text,
+      "isApproved" boolean not null default false,
       "createdAt" timestamptz not null default now(),
       "updatedAt" timestamptz not null default now()
     );`,

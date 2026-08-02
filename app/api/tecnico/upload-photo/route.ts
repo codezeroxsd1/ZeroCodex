@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { pool } from '@/lib/db'
+import { saveUploadedAsset } from '@/lib/storage'
 
 async function streamToBuffer(stream: ReadableStream<Uint8Array>) {
   const reader = stream.getReader()
@@ -56,14 +57,8 @@ export async function POST(request: Request) {
     const filename = `orden-${orderId}-${category}-${Date.now()}.${extension}`
     const buffer = Buffer.from(await uploadedFile.arrayBuffer())
 
-    const fs = await import('fs/promises')
-    const path = await import('path')
-    const uploadsDir = path.join(process.cwd(), 'public', 'uploads', 'photos')
-    await fs.mkdir(uploadsDir, { recursive: true })
-    const targetPath = path.join(uploadsDir, filename)
-    await fs.writeFile(targetPath, buffer)
-
-    const url = `/uploads/photos/${filename}`
+    const asset = await saveUploadedAsset(buffer, filename, uploadedFile.type || 'image/jpeg', 'photos')
+    const url = asset.url
     const client = await pool.connect()
     try {
       await client.query('UPDATE orden SET "updatedAt" = NOW() WHERE id = $1', [Number(orderId)])

@@ -10,6 +10,12 @@ export const user = pgTable("user", {
     .notNull(),
   image: text("image"),
   role: text("role").notNull().default("cliente"),
+  clientType: text("clientType").notNull().default("particular"),
+  companyName: text("companyName"),
+  companyRut: text("companyRut"),
+  companyEmail: text("companyEmail"),
+  companyPhone: text("companyPhone"),
+  companyAddress: text("companyAddress"),
   isApproved: boolean("isApproved").notNull().default(false),
   phone: text("phone"),
   createdAt: timestamp("createdAt")

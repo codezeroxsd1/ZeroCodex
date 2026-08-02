@@ -12,6 +12,12 @@ export type SessionUser = {
   role: Role
   isApproved: boolean
   phone?: string | null
+  clientType?: "particular" | "empresa"
+  companyName?: string | null
+  companyRut?: string | null
+  companyEmail?: string | null
+  companyPhone?: string | null
+  companyAddress?: string | null
 }
 
 type AuthSessionLike = {
@@ -22,6 +28,12 @@ type AuthSessionLike = {
     role?: string
     isApproved?: boolean
     phone?: string | null
+    clientType?: string
+    companyName?: string | null
+    companyRut?: string | null
+    companyEmail?: string | null
+    companyPhone?: string | null
+    companyAddress?: string | null
   }
 }
 
@@ -69,7 +81,16 @@ export async function getSessionUser(): Promise<SessionUser | null> {
     const session = await getSessionFromAuth(requestHeaders)
     if (!session?.user) return null
 
-    const u = session.user as typeof session.user & { role?: string; phone?: string | null }
+    const u = session.user as typeof session.user & {
+      role?: string
+      phone?: string | null
+      clientType?: string
+      companyName?: string | null
+      companyRut?: string | null
+      companyEmail?: string | null
+      companyPhone?: string | null
+      companyAddress?: string | null
+    }
 
     return {
       id: u.id,
@@ -78,6 +99,12 @@ export async function getSessionUser(): Promise<SessionUser | null> {
       role: (u.role as Role) || "cliente",
       isApproved: Boolean(u.isApproved),
       phone: u.phone ?? null,
+      clientType: (u.clientType as "particular" | "empresa") ?? "particular",
+      companyName: u.companyName ?? null,
+      companyRut: u.companyRut ?? null,
+      companyEmail: u.companyEmail ?? null,
+      companyPhone: u.companyPhone ?? null,
+      companyAddress: u.companyAddress ?? null,
     }
   } catch (error) {
     if (!isTransientAuthError(error)) {

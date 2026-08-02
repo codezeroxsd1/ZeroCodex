@@ -1,0 +1,43 @@
+(node:2292) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+neon_auth.user.id
+neon_auth.user.name
+neon_auth.user.email
+neon_auth.user.emailVerified
+neon_auth.user.image
+neon_auth.user.createdAt
+neon_auth.user.updatedAt
+neon_auth.user.role
+neon_auth.user.banned
+neon_auth.user.banReason
+neon_auth.user.banExpires
+neon_auth.user.clientType
+neon_auth.user.companyName
+neon_auth.user.companyRut
+neon_auth.user.companyEmail
+neon_auth.user.companyPhone
+neon_auth.user.companyAddress
+neon_auth.user.isApproved
+public.user.id
+public.user.name
+public.user.email
+public.user.emailVerified
+public.user.image
+public.user.role
+public.user.phone
+public.user.createdAt
+public.user.updatedAt
+public.user.isApproved
+public.user.clientType
+public.user.companyName
+public.user.companyRut
+public.user.companyEmail
+public.user.companyPhone
+public.user.companyAddress

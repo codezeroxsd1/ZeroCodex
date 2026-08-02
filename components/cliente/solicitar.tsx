@@ -45,6 +45,7 @@ export function ClienteSolicitar({
   const [pay, setPay] = useState<'online' | 'terreno'>('online')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [createdOrderId, setCreatedOrderId] = useState<string | null>(null)
+  const [submissionMessage, setSubmissionMessage] = useState<string | null>(null)
   const [availability, setAvailability] = useState<Record<string, number>>({})
   const [blockedDays, setBlockedDays] = useState<string[]>([])
   const [blockedHours, setBlockedHours] = useState<string[]>([])
@@ -88,6 +89,7 @@ export function ClienteSolicitar({
 
   async function handleConfirmReservation() {
     setIsSubmitting(true)
+    setSubmissionMessage(null)
     try {
       const dateKey = selectedDateKey || buildDateKeyFromParts(new Date().getFullYear(), new Date().getMonth(), Number(day))
 
@@ -103,6 +105,7 @@ export function ClienteSolicitar({
 
       if (result?.success && result.ordenId) {
         setCreatedOrderId(String(result.ordenId))
+        setSubmissionMessage(pay === 'online' ? 'Tu solicitud quedó registrada y ya puedes continuar con el pago.' : 'Tu reserva quedó confirmada. El administrador la revisará pronto.')
         // refresh availability for selected day so UI blocks if capacity reached
         try {
           const resp = await fetch(`/api/agenda/availability?date=${encodeURIComponent(selectedDateKey)}`)
@@ -113,11 +116,11 @@ export function ClienteSolicitar({
         }
         setStep('listo')
       } else {
-        alert(result?.error || 'No se pudo registrar la solicitud. Intenta nuevamente.')
+        setSubmissionMessage(result?.error || 'No se pudo registrar la solicitud. Intenta nuevamente.')
       }
     } catch (error) {
       console.error(error)
-      alert('No se pudo registrar la solicitud. Intenta nuevamente.')
+      setSubmissionMessage('No se pudo registrar la solicitud. Intenta nuevamente.')
     } finally {
       setIsSubmitting(false)
     }
@@ -382,6 +385,11 @@ export function ClienteSolicitar({
               <div className="rounded-2xl border border-border bg-card p-4">
                 <Row label="Total a pagar" value={formatCLP(total)} strong />
               </div>
+              {submissionMessage ? (
+                <div className="rounded-2xl border border-primary/20 bg-primary/10 p-3 text-sm text-primary">
+                  {submissionMessage}
+                </div>
+              ) : null}
               <PrimaryButton onClick={handleConfirmReservation} loading={isSubmitting}>
                 {isSubmitting
                   ? 'Procesando...'
@@ -407,7 +415,7 @@ export function ClienteSolicitar({
               <div className="w-full rounded-2xl border border-border bg-card p-4 text-left text-sm">
                 <Row label="Orden" value={createdOrderId ? `ZI-${createdOrderId}` : 'ZI-2044'} />
                 <Row label="Total" value={formatCLP(total)} />
-                <Row label="Estado" value="Pendiente" />
+                <Row label="Estado" value="Pendiente de revisión" />
               </div>
               <p className="text-center text-xs text-muted-foreground">
                 Esta solicitud ya quedó registrada para que el administrador la vea en el dashboard.

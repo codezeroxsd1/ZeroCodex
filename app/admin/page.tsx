@@ -36,7 +36,7 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
   try {
     users = await db.select().from(user).limit(100)
   } catch (e) {
-    const res = await pool.query('SELECT id, name, email, role, phone, createdAt FROM "user" LIMIT 100')
+    const res = await pool.query('SELECT id, name, email, role, phone, "createdAt" FROM "user" LIMIT 100')
     users = res.rows
   }
 
@@ -52,13 +52,17 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
   // map to plain objects for client
   const clients = users
     .filter((u: any) => normalizeRole(u.role) === 'cliente')
-    .map((u: any) => ({
-      id: u.id,
-      name: u.name || u.email || 'usuario',
-      type: 'Cliente',
-      createdAt: u.createdAt ? new Date(u.createdAt).toISOString() : undefined,
-      rating: 0,
-    }))
+    .map((u: any) => {
+      const clientType = String(u.clientType ?? 'particular').toLowerCase().trim() === 'empresa' ? 'empresa' : 'particular'
+      return {
+        id: u.id,
+        name: u.name || u.email || 'usuario',
+        clientType,
+        type: clientType === 'empresa' ? 'Empresa' : 'Particular',
+        createdAt: u.createdAt ? new Date(u.createdAt).toISOString() : undefined,
+        rating: 0,
+      }
+    })
 
   const technicians = users
     .filter((u: any) => normalizeRole(u.role) === 'tecnico')

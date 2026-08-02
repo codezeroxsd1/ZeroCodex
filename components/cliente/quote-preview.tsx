@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { formatCLP, getApplicablePromotions, computeBestPromotionDiscount, applyPromotionToAmount } from '@/lib/data'
 import { updateOrdenStatus } from '@/app/actions/orden'
+import { buildOrderPdfHtml } from '@/lib/pdf'
 
 export default function QuotePreview({ quote, onClose }: { quote: any; onClose?: () => void }) {
   const router = useRouter()
@@ -12,6 +13,7 @@ export default function QuotePreview({ quote, onClose }: { quote: any; onClose?:
   const [promotionsConfig, setPromotionsConfig] = useState<any[]>([])
   const [statusLoading, setStatusLoading] = useState(false)
   const [statusMessage, setStatusMessage] = useState<string | null>(null)
+  const [paymentLoading, setPaymentLoading] = useState(false)
   const quoteStatus = String(quote?.status ?? quote?.estado ?? '').trim().toLowerCase()
 
   const resolveOrderId = () => {
@@ -56,8 +58,64 @@ export default function QuotePreview({ quote, onClose }: { quote: any; onClose?:
     }
   }
 
-  const handlePaymentPlaceholder = () => {
-    window.alert('La integración de pago aún no está disponible. Esta acción es un placeholder para la próxima fase.')
+  const handleGeneratePdf = () => {
+    const orderPayload = {
+      id: resolveOrderId(),
+      categoria: quote?.service ?? quote?.categoria ?? quote?.descripcion ?? '',
+      clienteNombre: quote?.client ?? quote?.clienteNombre ?? '',
+      direccion: quote?.address ?? quote?.direccion ?? '',
+      precio: quote?.total ?? quote?.precio ?? quote?.amount ?? 0,
+      estado: quote?.status ?? quote?.estado ?? 'Pendiente',
+      notasTecnico: quote?.notes ?? quote?.observaciones ?? '',
+      date: quote?.date ?? quote?.createdAt ?? new Date().toISOString(),
+    }
+
+    const printWindow = window.open('', '_blank', 'width=900,height=700')
+    if (!printWindow) return
+    printWindow.document.write(buildOrderPdfHtml(orderPayload))
+    printWindow.document.close()
+    printWindow.focus()
+    printWindow.print()
+  }
+
+  const handlePaymentCheckout = async () => {
+    const orderId = resolveOrderId()
+    if (!orderId) {
+      window.alert('No se pudo determinar el ID de orden para esta cotización.')
+      return
+    }
+
+    const amount = Number(quote?.total ?? quote?.precio ?? quote?.amount ?? 0)
+    if (!Number.isFinite(amount) || amount <= 0) {
+      window.alert('No se pudo determinar el monto de la cotización para el pago.')
+      return
+    }
+
+    try {
+      setPaymentLoading(true)
+      setStatusMessage(null)
+      const res = await fetch('/api/payments/mercadopago', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          orderId,
+          amount,
+          payerEmail: quote?.clienteEmail ?? quote?.email ?? '',
+          payerName: quote?.client ?? quote?.clienteNombre ?? '',
+          origin: window.location.origin,
+        }),
+      })
+      const json = await res.json()
+      if (!res.ok || !json?.success || !json?.initPoint) {
+        throw new Error(json?.error || 'No se pudo iniciar el pago')
+      }
+      window.location.assign(json.initPoint)
+    } catch (error) {
+      console.error('Payment checkout error', error)
+      setStatusMessage(String(error))
+    } finally {
+      setPaymentLoading(false)
+    }
   }
 
   useEffect(() => {
@@ -530,11 +588,11 @@ export default function QuotePreview({ quote, onClose }: { quote: any; onClose?:
                 <>
                   <button
                     type="button"
-                    disabled={statusLoading}
-                    onClick={() => handlePaymentPlaceholder()}
+                    disabled={statusLoading || paymentLoading}
+                    onClick={() => handlePaymentCheckout()}
                     className="inline-flex flex-1 items-center justify-center rounded-full bg-primary px-4 py-3 text-sm font-semibold text-white transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    {statusLoading ? 'Procesando...' : 'Ir a pago (placeholder)'}
+                    {paymentLoading ? 'Redirigiendo a Mercado Pago...' : 'Ir a pago'}
                   </button>
                   <button
                     type="button"

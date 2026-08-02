@@ -53,6 +53,8 @@ const titles: Record<ClienteTab, string> = {
 export function ClienteApp() {
   const router = useRouter()
   const { data: session } = useSession()
+  const sessionUser = session?.user as { clientType?: string } | undefined
+  const isEmpresaClient = sessionUser?.clientType === 'empresa'
   const [tab, setTab] = useState<ClienteTab>('inicio')
   const [selectedService, setSelectedService] = useState<string | null>(null)
   const [showProfile, setShowProfile] = useState(false)
@@ -148,7 +150,7 @@ export function ClienteApp() {
   }
 
   return (
-    <div className="relative h-screen w-full overflow-hidden bg-background">
+    <div className={cn("relative h-screen w-full overflow-hidden bg-background", isEmpresaClient && "empresa-theme")}>
       <div className="flex h-full w-full flex-col lg:flex-row">
         <aside className="hidden w-72 shrink-0 flex-col border-r border-border bg-card/80 lg:flex">
           <div className="border-b border-border p-5">
@@ -428,6 +430,12 @@ function ClienteProfilePanel({
     email?: string
     phone?: string
     role?: string
+    clientType?: string
+    companyName?: string
+    companyRut?: string
+    companyEmail?: string
+    companyPhone?: string
+    companyAddress?: string
   }
   orders: any[]
   onClose: () => void
@@ -457,7 +465,7 @@ function ClienteProfilePanel({
         </div>
       </div>
 
-      <div className="mt-4 grid gap-3 rounded-3xl bg-background/80 p-4 text-sm text-muted-foreground">
+      <div className="mt-4 rounded-3xl border border-border bg-background/80 p-4 text-sm text-muted-foreground">
         <div className="flex items-center justify-between">
           <span className="font-medium text-muted-foreground">Email</span>
           <span className="truncate text-right">{user.email ?? 'no disponible'}</span>
@@ -466,9 +474,36 @@ function ClienteProfilePanel({
           <span className="font-medium text-muted-foreground">Teléfono</span>
           <span className="truncate text-right">{user.phone ?? 'no disponible'}</span>
         </div>
-        <div className="flex items-center justify-between">
-          <span className="font-medium text-muted-foreground">Último servicio</span>
-          <span className="truncate text-right">{latestOrderDate ? latestOrderDate.toLocaleDateString('es-CL') : 'Sin servicios'}</span>
+        <div className="mt-4 grid gap-3 rounded-3xl bg-card p-4">
+          <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Tipo de cliente</p>
+          <p className="font-semibold">{user.clientType === 'empresa' ? 'Empresa' : 'Particular'}</p>
+
+          {user.clientType === 'empresa' ? (
+            <div className="space-y-3 pt-3 text-sm text-muted-foreground">
+              <div className="flex items-center justify-between">
+                <span className="font-medium">Empresa</span>
+                <span className="truncate text-right">{user.companyName ?? 'No registrada'}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="font-medium">RUT</span>
+                <span className="truncate text-right">{user.companyRut ?? 'No registrada'}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="font-medium">Email empresa</span>
+                <span className="truncate text-right">{user.companyEmail ?? 'No registrada'}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="font-medium">Teléfono empresa</span>
+                <span className="truncate text-right">{user.companyPhone ?? 'No disponible'}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="font-medium">Dirección empresa</span>
+                <span className="truncate text-right">{user.companyAddress ?? 'No disponible'}</span>
+              </div>
+            </div>
+          ) : (
+            <p className="pt-3 text-sm text-muted-foreground">Te mostramos los datos de contacto usados para tus solicitudes.</p>
+          )}
         </div>
       </div>
 
