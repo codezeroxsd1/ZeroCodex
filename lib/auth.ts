@@ -1,4 +1,6 @@
+import nodemailer from "nodemailer"
 import { betterAuth } from "better-auth"
+import { emailOTP } from "better-auth/plugins/email-otp"
 import { nextCookies } from "better-auth/next-js"
 import { Pool } from "pg"
 
@@ -62,11 +64,60 @@ export const auth = betterAuth({
   baseURL,
   trustedOrigins,
   secret: authSecret,
-  plugins: [nextCookies()],
+  plugins: [
+    nextCookies(),
+    emailOTP({
+      sendVerificationOnSignUp: true,
+      otpLength: 6,
+      expiresIn: 300,
+      sendVerificationOTP: async ({ email, otp, type }) => {
+        if (type !== "email-verification") return
+
+        const host = process.env.SMTP_HOST
+        const port = Number(process.env.SMTP_PORT || 587)
+        const user = process.env.SMTP_USER
+        const pass = process.env.SMTP_PASS
+        const from = process.env.SMTP_FROM || user
+
+        if (!host || !user || !pass || !from) {
+          const devMessage = `SMTP no configurado. OTP local para ${email}: ${otp}`
+          if (process.env.NODE_ENV !== "production") {
+            console.warn(devMessage)
+          } else {
+            console.warn("SMTP no configurado, no se envía el código de verificación", { email, type })
+          }
+          return
+        }
+
+        const transporter = nodemailer.createTransport({
+          host,
+          port,
+          secure: port === 465,
+          auth: { user, pass },
+        })
+
+        const subject = "Código de verificación de correo"
+        const text = `Tu código de verificación es: ${otp}\n\nIngresa este código en la aplicación para activar tu cuenta.`
+        const html = `<p>Tu código de verificación es:</p><h2>${otp}</h2><p>Ingresa este código en la aplicación para activar tu cuenta.</p>`
+
+        await transporter.sendMail({
+          from,
+          to: email,
+          subject,
+          text,
+          html,
+        })
+      },
+    }),
+  ],
+  emailVerification: {
+    autoSignInAfterVerification: true,
+  },
   database: databaseUrl ? new Pool({ connectionString: databaseUrl }) : undefined,
   emailAndPassword: {
     enabled: true,
     minPasswordLength: 8,
+    requireEmailVerification: true,
   },
   socialProviders: {
     google: {
@@ -81,6 +132,37 @@ export const auth = betterAuth({
         type: "string",
         required: false,
         defaultValue: "cliente",
+        input: true,
+      },
+      clientType: {
+        type: "string",
+        required: false,
+        defaultValue: "particular",
+        input: true,
+      },
+      companyName: {
+        type: "string",
+        required: false,
+        input: true,
+      },
+      companyRut: {
+        type: "string",
+        required: false,
+        input: true,
+      },
+      companyEmail: {
+        type: "string",
+        required: false,
+        input: true,
+      },
+      companyPhone: {
+        type: "string",
+        required: false,
+        input: true,
+      },
+      companyAddress: {
+        type: "string",
+        required: false,
         input: true,
       },
       isApproved: {
@@ -101,11 +183,13 @@ export const auth = betterAuth({
       create: {
         async before(user) {
           const normalizedRole = String(user.role || "cliente").toLowerCase()
+          const normalizedClientType = String(user.clientType || "particular").toLowerCase()
           const isTechnician = normalizedRole === "tecnico"
           return {
             data: {
               ...user,
               role: isTechnician ? "tecnico" : normalizedRole === "admin" ? "admin" : "cliente",
+              clientType: normalizedClientType === "empresa" ? "empresa" : "particular",
               isApproved: isTechnician ? false : true,
             },
           }
