@@ -20,6 +20,8 @@ export const testUsers = {
   },
 }
 
+export const testUserEmails = Object.values(testUsers).map((user) => user.email)
+
 // Para desarrollo: URLs de quick-login
 export const getQuickLoginUrl = (role: "cliente" | "tecnico" | "admin") => {
   const user = testUsers[role]

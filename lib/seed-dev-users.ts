@@ -5,9 +5,10 @@
 
 import { db } from "./db"
 import { user as userTable, account as accountTable } from "./db/schema"
-import { eq, and } from "drizzle-orm"
+import { eq, inArray } from "drizzle-orm"
 import crypto from "crypto"
 import { hashPassword as betterHashPassword } from "@better-auth/utils/password"
+import { testUserEmails } from "./test-users"
 
 const DEV_USERS = [
   {
@@ -30,6 +31,26 @@ const DEV_USERS = [
   },
 ]
 
+export async function ensureTestUsersReady() {
+  if (!testUserEmails.length) return
+
+  try {
+    const existing = await db
+      .select({ id: userTable.id, email: userTable.email })
+      .from(userTable)
+      .where(inArray(userTable.email, testUserEmails))
+
+    for (const existingUser of existing) {
+      await db
+        .update(userTable)
+        .set({ emailVerified: true, updatedAt: new Date() })
+        .where(eq(userTable.id, existingUser.id))
+    }
+  } catch (error) {
+    console.warn("No se pudo restaurar la verificación de las cuentas de prueba", error)
+  }
+}
+
 export async function seedDevUsers() {
   if (process.env.NODE_ENV !== "development") {
     return
@@ -37,6 +58,7 @@ export async function seedDevUsers() {
 
   try {
     console.log("🌱 Verificando usuarios de prueba...")
+    await ensureTestUsersReady()
 
     for (const testUser of DEV_USERS) {
       const existing = await db
@@ -79,34 +101,34 @@ export async function seedDevUsers() {
 
         console.log(`✅ Usuario creado: ${testUser.email} (${testUser.role})`)
       } else {
-          console.log(`✓ Usuario ya existe: ${testUser.email}`)
-          // Asegurar que la cuenta de credenciales exista y tenga la contraseña correcta
-          const uid = existing[0].id
-          const existingAccounts = await db
-            .select()
-            .from(accountTable)
+        console.log(`✓ Usuario ya existe: ${testUser.email}`)
+        // Asegurar que la cuenta de credenciales exista y tenga la contraseña correcta
+        const uid = existing[0].id
+        const existingAccounts = await db
+          .select()
+          .from(accountTable)
+          .where(eq(accountTable.userId, uid))
+
+        const hashed = await betterHashPassword(testUser.password)
+
+        if (existingAccounts.length === 0) {
+          await db.insert(accountTable).values({
+            id: crypto.randomUUID(),
+            accountId: crypto.randomUUID(),
+            providerId: "credential",
+            userId: uid,
+            password: hashed,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          })
+          console.log(`✅ Cuenta credential creada para: ${testUser.email}`)
+        } else {
+          await db
+            .update(accountTable)
+            .set({ password: hashed, updatedAt: new Date() })
             .where(eq(accountTable.userId, uid))
-
-          const hashed = await betterHashPassword(testUser.password)
-
-          if (existingAccounts.length === 0) {
-            await db.insert(accountTable).values({
-              id: crypto.randomUUID(),
-              accountId: crypto.randomUUID(),
-              providerId: "credential",
-              userId: uid,
-              password: hashed,
-              createdAt: new Date(),
-              updatedAt: new Date(),
-            })
-            console.log(`✅ Cuenta credential creada para: ${testUser.email}`)
-          } else {
-            await db
-              .update(accountTable)
-              .set({ password: hashed, updatedAt: new Date() })
-              .where(eq(accountTable.userId, uid))
-            console.log(`🔁 Contraseña actualizada para: ${testUser.email}`)
-          }
+          console.log(`🔁 Contraseña actualizada para: ${testUser.email}`)
+        }
       }
     }
 

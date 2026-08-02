@@ -3,6 +3,7 @@ import { betterAuth } from "better-auth"
 import { emailOTP } from "better-auth/plugins/email-otp"
 import { nextCookies } from "better-auth/next-js"
 import { Pool } from "pg"
+import { ensureTestUsersReady } from "./seed-dev-users"
 
 // Construcción segura de base URL
 const baseURL = (() => {
@@ -59,6 +60,10 @@ function normalizeDatabaseUrl(url: string | undefined) {
 }
 
 const databaseUrl = normalizeDatabaseUrl(process.env.DATABASE_URL)
+
+void ensureTestUsersReady().catch((error) => {
+  console.warn("No se pudo restaurar la verificación de cuentas de prueba", error)
+})
 
 export const auth = betterAuth({
   baseURL,
