@@ -93,21 +93,23 @@ export const auth = betterAuth({
           return
         }
 
-        const useGmailService = host === "smtp.gmail.com" && port === 587
-        const transporter = nodemailer.createTransport({
-          ...(useGmailService ? { service: "gmail" } : { host, port, secure: port === 465 }),
-          requireTLS: port === 587,
-          auth: { user, pass },
-          connectionTimeout: 10000,
-          greetingTimeout: 10000,
-          socketTimeout: 10000,
-          logger: process.env.NODE_ENV !== "production",
-          debug: process.env.NODE_ENV !== "production",
-          tls: {
-            rejectUnauthorized: false,
-          },
-        })
+        const useGmailService = host === "smtp.gmail.com" || host === "smtp-relay.gmail.com"
+        const createTransporter = (overridePort?: number, secureOverride?: boolean) =>
+          nodemailer.createTransport({
+            ...(useGmailService ? { service: "gmail" } : { host, port: overridePort ?? port, secure: secureOverride ?? port === 465 }),
+            requireTLS: port === 587,
+            auth: { user, pass },
+            connectionTimeout: 10000,
+            greetingTimeout: 10000,
+            socketTimeout: 10000,
+            logger: process.env.NODE_ENV !== "production",
+            debug: process.env.NODE_ENV !== "production",
+            tls: {
+              rejectUnauthorized: false,
+            },
+          })
 
+        const fromAddress = from.includes("<") ? from : `"Zero Industries" <${from}>`
         const subject = type === "forget-password" ? "Recupera tu contraseña" : "Código de verificación de correo"
         const text = type === "forget-password"
           ? `Tu código para recuperar tu contraseña es: ${otp}\n\nIngresa este código en la aplicación y crea una nueva contraseña.`
@@ -116,25 +118,44 @@ export const auth = betterAuth({
           ? `<p>Tu código para recuperar tu contraseña es:</p><h2>${otp}</h2><p>Ingresa este código en la aplicación y crea una nueva contraseña.</p>`
           : `<p>Tu código de verificación es:</p><h2>${otp}</h2><p>Ingresa este código en la aplicación para activar tu cuenta.</p>`
 
-        try {
-          await transporter.sendMail({
-            from,
-            to: email,
-            subject,
-            text,
-            html,
-          })
-        } catch (mailError) {
+        let transporter = createTransporter()
+        let lastError: unknown = null
+
+        for (const attempt of [
+          { port: 587, secure: false },
+          { port: 465, secure: true },
+        ]) {
+          if (attempt.port !== port) {
+            transporter = createTransporter(attempt.port, attempt.secure)
+          }
+
+          try {
+            await transporter.sendMail({
+              from: fromAddress,
+              to: email,
+              subject,
+              text,
+              html,
+            })
+            lastError = null
+            break
+          } catch (mailError) {
+            lastError = mailError
+            console.warn(`SMTP attempt failed on port ${attempt.port}`, { email, type, host, user, port: attempt.port, error: mailError })
+          }
+        }
+
+        if (lastError) {
           console.error("Error enviando OTP por SMTP", {
             email,
             type,
             host,
             port,
             user,
-            from,
-            error: mailError,
+            from: fromAddress,
+            error: lastError,
           })
-          throw mailError
+          throw lastError
         }
       },
     }),
