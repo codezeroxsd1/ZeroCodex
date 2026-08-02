@@ -130,6 +130,7 @@ export const auth = betterAuth({
         }
       },
     }),
+    nextCookies(),
   ],
   emailVerification: {
     autoSignInAfterVerification: true,
