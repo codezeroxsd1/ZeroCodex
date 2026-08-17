@@ -16,10 +16,25 @@ export async function GET() {
         .where(eq(orden.clienteId, user.id))
         .orderBy(desc(orden.createdAt))
 
-      return NextResponse.json({ orders })
+      // Add client email to each order
+      const ordersWithEmail = orders.map((o: any) => ({
+        ...o,
+        clienteEmail: user.email,
+        email: user.email,
+      }))
+
+      return NextResponse.json({ orders: ordersWithEmail })
     } catch (e) {
       const res = await (global as any).pool.query('SELECT id, clienteid, clientenombre, clienteTelefono, categoria, descripcion, direccion, urgencia, estado, tecnicoid, tecniconombre, precio, pdfUrl, date, localDate, localTime, notastecnico, historial, departureAt, arrivalAt, workStartAt, workEndAt, createdAt, updatedAt FROM orden WHERE clienteid = $1 ORDER BY createdAt DESC', [user.id])
-      return NextResponse.json({ orders: res.rows })
+      
+      // Add client email to each order
+      const ordersWithEmail = res.rows.map((o: any) => ({
+        ...o,
+        clienteEmail: user.email,
+        email: user.email,
+      }))
+
+      return NextResponse.json({ orders: ordersWithEmail })
     }
   } catch (error) {
     console.error('Error fetching cliente orders:', error)

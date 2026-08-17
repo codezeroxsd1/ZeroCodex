@@ -49,6 +49,9 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
 
   const normalizeRole = (value: unknown) => String(value ?? '').toLowerCase().trim()
 
+  // create a map of user ID to email for easy lookup
+  const userEmailMap = new Map(users.map((u: any) => [u.id, u.email || '']))
+
   // map to plain objects for client
   const clients = users
     .filter((u: any) => normalizeRole(u.role) === 'cliente')
@@ -107,6 +110,8 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
       technicalEvidence: o.technicalEvidence ?? null,
       historial: o.historial ?? null,
       pdfUrl,
+      clienteId: o.clienteId || o.clienteid || null,
+      clienteEmail: userEmailMap.get(o.clienteId || o.clienteid) || '',
     }
   })
 

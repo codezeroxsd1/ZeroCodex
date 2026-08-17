@@ -861,8 +861,6 @@ function Dashboard({
 }
 
 function Clientes({ clients = [], orders = [] }: { clients: any[]; orders: any[] }) {
-  const [clientFilter, setClientFilter] = useState<'all' | 'empresa' | 'particular'>('all')
-
   const clientStats = useMemo(() => {
     const stats: Record<string, { jobs: number; spent: number; lastService: string }> = {}
     for (const c of clients) {
@@ -897,128 +895,62 @@ function Clientes({ clients = [], orders = [] }: { clients: any[]; orders: any[]
     return stats
   }, [clients, orders])
 
-  const filteredClients = useMemo(() => {
-    return clients.filter((c) => {
-      const type = String(c.clientType || 'particular').toLowerCase()
-      if (clientFilter === 'all') return true
-      return type === clientFilter
-    })
-  }, [clients, clientFilter])
-
-  const filterCounts = useMemo(() => {
-    const empresa = clients.filter((c) => String(c.clientType || 'particular').toLowerCase() === 'empresa').length
-    const particular = clients.filter((c) => String(c.clientType || 'particular').toLowerCase() !== 'empresa').length
-    return { total: clients.length, empresa, particular }
-  }, [clients])
-
   return (
     <div>
       <PageTitle title="Clientes" subtitle="Gestión de clientes y su historial" />
-      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <p className="text-sm text-muted-foreground">Filtrar clientes por tipo</p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {[
-            { id: 'all', label: `Todos (${filterCounts.total})` },
-            { id: 'empresa', label: `Empresa (${filterCounts.empresa})` },
-            { id: 'particular', label: `Particular (${filterCounts.particular})` },
-          ].map((option) => (
-            <button
-              key={option.id}
-              type="button"
-              onClick={() => setClientFilter(option.id as 'all' | 'empresa' | 'particular')}
-              className={cn(
-                'rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors',
-                clientFilter === option.id
-                  ? 'border-primary bg-primary/10 text-primary'
-                  : 'border-border bg-background text-muted-foreground hover:border-primary/50 hover:text-primary',
-              )}
-            >
-              {option.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {filteredClients.length === 0 ? (
+      {clients.length === 0 && (
         <div className="mb-4 rounded-2xl border border-border bg-card p-4 text-sm text-muted-foreground">
-          No hay clientes que coincidan con el filtro seleccionado.
-        </div>
-      ) : (
-        <div className="overflow-hidden rounded-2xl border border-border bg-card">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border text-left text-xs text-muted-foreground">
-                <th className="px-4 py-3 font-medium">Cliente</th>
-                <th className="px-4 py-3 font-medium">Tipo</th>
-                <th className="px-4 py-3 font-medium">Calif.</th>
-                <th className="hidden px-4 py-3 font-medium sm:table-cell">Trabajos</th>
-                <th className="px-4 py-3 font-medium">Facturado</th>
-                <th className="hidden px-4 py-3 font-medium md:table-cell">Último</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredClients.map((c) => {
-                const stats = clientStats[c.id] ?? { jobs: 0, spent: 0, lastService: 'Sin registro' }
-                return (
-                  <tr key={c.id} className="border-b border-border last:border-0">
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-3">
-                        <span className="flex size-8 items-center justify-center rounded-full bg-secondary text-xs font-bold">
-                          {c.name.slice(0, 2).toUpperCase()}
-                        </span>
-                        <span className="font-medium">{c.name}</span>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className="rounded-full bg-secondary px-2.5 py-1 text-xs">{c.type}</span>
-                    </td>
-                    <td className="px-4 py-3 font-medium flex items-center gap-2"><Star className="size-3.5 fill-warning text-warning" /> {c.rating ?? 0}</td>
-                    <td className="hidden px-4 py-3 text-muted-foreground sm:table-cell">{stats.jobs}</td>
-                    <td className="px-4 py-3 font-medium">{formatCLP(stats.spent)}</td>
-                    <td className="hidden px-4 py-3 text-muted-foreground md:table-cell">{stats.lastService}</td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
+          No hay clientes que coincidan con la búsqueda.
         </div>
       )}
+      <div className="overflow-hidden rounded-2xl border border-border bg-card">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-border text-left text-xs text-muted-foreground">
+              <th className="px-4 py-3 font-medium">Cliente</th>
+              <th className="px-4 py-3 font-medium">Tipo</th>
+              <th className="px-4 py-3 font-medium">Calif.</th>
+              <th className="hidden px-4 py-3 font-medium sm:table-cell">Trabajos</th>
+              <th className="px-4 py-3 font-medium">Facturado</th>
+              <th className="hidden px-4 py-3 font-medium md:table-cell">Último</th>
+            </tr>
+          </thead>
+          <tbody>
+            {clients.map((c) => {
+              const stats = clientStats[c.id] ?? { jobs: 0, spent: 0, lastService: 'Sin registro' }
+              return (
+                <tr key={c.id} className="border-b border-border last:border-0">
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-3">
+                      <span className="flex size-8 items-center justify-center rounded-full bg-secondary text-xs font-bold">
+                        {c.name.slice(0, 2).toUpperCase()}
+                      </span>
+                      <span className="font-medium">{c.name}</span>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className="rounded-full bg-secondary px-2.5 py-1 text-xs">{c.type}</span>
+                  </td>
+                  <td className="px-4 py-3 font-medium flex items-center gap-2"><Star className="size-3.5 fill-warning text-warning" /> {c.rating ?? 0}</td>
+                  <td className="hidden px-4 py-3 text-muted-foreground sm:table-cell">{stats.jobs}</td>
+                  <td className="px-4 py-3 font-medium">{formatCLP(stats.spent)}</td>
+                  <td className="hidden px-4 py-3 text-muted-foreground md:table-cell">{stats.lastService}</td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
     </div>
   )
 }
 
 function Tecnicos({ technicians = [] }: { technicians: any[] }) {
-  const router = useRouter()
-  const [approvingId, setApprovingId] = useState<string | null>(null)
   const statusColor: Record<string, string> = {
     Disponible: 'text-primary',
     'En terreno': 'text-warning',
     Descanso: 'text-muted-foreground',
-    'Pendiente aprobación': 'text-warning',
   }
-
-  const handleApprove = async (techId: string) => {
-    setApprovingId(techId)
-    try {
-      const response = await fetch('/api/admin/technicians/approve', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: techId }),
-      })
-      const json = await response.json()
-      if (!response.ok || !json?.success) {
-        throw new Error(json?.error || 'No se pudo aprobar al técnico')
-      }
-      router.refresh()
-    } catch (error) {
-      alert(`❌ ${error instanceof Error ? error.message : 'No se pudo aprobar al técnico'}`)
-    } finally {
-      setApprovingId(null)
-    }
-  }
-
   return (
     <div>
       <PageTitle title="Técnicos" subtitle="Equipo en terreno y disponibilidad" />
@@ -1051,23 +983,6 @@ function Tecnicos({ technicians = [] }: { technicians: any[] }) {
               <span className="font-bold text-foreground">{t.jobsToday}</span>{' '}
               <span className="text-muted-foreground">trabajos hoy</span>
             </div>
-            {Boolean(t.isApproved) ? (
-              <div className="mt-3 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-xs font-medium text-emerald-700">
-                Aprobado
-              </div>
-            ) : (
-              <div className="mt-3 flex items-center justify-between gap-2 rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs font-medium text-amber-700">
-                <span>Pendiente aprobación</span>
-                <button
-                  type="button"
-                  onClick={() => handleApprove(t.id)}
-                  disabled={approvingId === t.id}
-                  className="rounded-full bg-amber-600 px-2.5 py-1 text-[11px] font-semibold text-white disabled:opacity-60"
-                >
-                  {approvingId === t.id ? 'Aprobando...' : 'Aprobar'}
-                </button>
-              </div>
-            )}
           </div>
         ))}
       </div>
@@ -1172,6 +1087,13 @@ function Solicitudes({
 
   const solicitudes = orders.filter((o) => {
     const estado = getEffectiveRequestStatus(o)
+    
+    // Por defecto, no mostrar órdenes en "pendiente_pago" (esperando confirmación de pago online)
+    // Estas órdenes aparecerán cuando el pago sea confirmado por Mercado Pago
+    if (estado === 'pendiente_pago' && filter === 'all') {
+      return false
+    }
+    
     const matchesStatus = filter === 'all' || estado === filter
     const haystack = [
       o.clienteNombre,
@@ -1369,6 +1291,8 @@ function Solicitudes({
       id: quoteId,
       orderId: solicitud.id,
       client: clientName,
+      clienteEmail: solicitud.clienteEmail || '',
+      email: solicitud.clienteEmail || '',
       service: serviceName,
       date: new Date().toLocaleDateString('es-CL'),
       status: 'Borrador' as const,
@@ -4617,26 +4541,6 @@ function Configuraciones({ initialTab }: { initialTab?: 'agenda' | 'servicios' |
     setSettings({ ...settings, minAdvanceDays: nextValue })
   }
 
-  const updateContactLink = (value: string) => {
-    setSettings({ ...settings, contactLink: value })
-  }
-
-  const updatePrimaryCtaLink = (value: string) => {
-    setSettings({ ...settings, primaryCtaLink: value })
-  }
-
-  const updatePrimaryCtaLabel = (value: string) => {
-    setSettings({ ...settings, primaryCtaLabel: value })
-  }
-
-  const updateSecondaryCtaLink = (value: string) => {
-    setSettings({ ...settings, secondaryCtaLink: value })
-  }
-
-  const updateSecondaryCtaLabel = (value: string) => {
-    setSettings({ ...settings, secondaryCtaLabel: value })
-  }
-
   const updateServiceField = (index: number, field: string, value: string | number | boolean) => {
     const services = [...(settings.services ?? [])]
     services[index] = { ...services[index], [field]: value }
@@ -4892,55 +4796,6 @@ function Configuraciones({ initialTab }: { initialTab?: 'agenda' | 'servicios' |
                     <button type="button" onClick={() => updateMinAdvanceDays((Number(settings.minAdvanceDays ?? 1)) - 1)} className="rounded-lg border border-border px-2 py-1 text-sm">−</button>
                     <input type="number" min={0} value={Number(settings.minAdvanceDays ?? 1)} onChange={(e) => updateMinAdvanceDays(Number(e.target.value))} className="w-20 rounded-lg border border-border bg-background px-3 py-2 text-sm" />
                     <button type="button" onClick={() => updateMinAdvanceDays((Number(settings.minAdvanceDays ?? 1)) + 1)} className="rounded-lg border border-border px-2 py-1 text-sm">+</button>
-                  </div>
-                </div>
-                <div className="space-y-3 rounded-lg border border-border bg-background/70 p-3">
-                  <div>
-                    <p className="mb-1 text-sm font-medium">Enlace del botón “Contacto” del banner principal</p>
-                    <p className="text-xs text-muted-foreground">Este enlace controla únicamente el botón superior derecho de la portada llamado “Contacto”.</p>
-                    <input
-                      type="url"
-                      value={String(settings.contactLink ?? 'https://wa.me/56900000000')}
-                      onChange={(e) => updateContactLink(e.target.value)}
-                      placeholder="https://wa.me/56900000000"
-                      className="mt-2 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
-                    />
-                  </div>
-                  <div>
-                    <p className="mb-1 text-sm font-medium">Botón principal de la portada</p>
-                    <p className="text-xs text-muted-foreground">Controla el texto y el destino del botón principal de la sección inicial.</p>
-                    <input
-                      type="text"
-                      value={String(settings.primaryCtaLabel ?? 'Solicitar servicio')}
-                      onChange={(e) => updatePrimaryCtaLabel(e.target.value)}
-                      placeholder="Solicitar servicio"
-                      className="mt-2 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
-                    />
-                    <input
-                      type="text"
-                      value={String(settings.primaryCtaLink ?? '/cliente')}
-                      onChange={(e) => updatePrimaryCtaLink(e.target.value)}
-                      placeholder="/cliente"
-                      className="mt-2 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
-                    />
-                  </div>
-                  <div>
-                    <p className="mb-1 text-sm font-medium">Botón secundario de la portada</p>
-                    <p className="text-xs text-muted-foreground">Controla el texto y el destino del botón secundario de la sección inicial.</p>
-                    <input
-                      type="text"
-                      value={String(settings.secondaryCtaLabel ?? 'Ver panel de gestión')}
-                      onChange={(e) => updateSecondaryCtaLabel(e.target.value)}
-                      placeholder="Ver panel de gestión"
-                      className="mt-2 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
-                    />
-                    <input
-                      type="text"
-                      value={String(settings.secondaryCtaLink ?? '/admin')}
-                      onChange={(e) => updateSecondaryCtaLink(e.target.value)}
-                      placeholder="/admin"
-                      className="mt-2 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
-                    />
                   </div>
                 </div>
               </div>

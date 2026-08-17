@@ -27,6 +27,7 @@ import { Logo } from '@/components/brand/logo'
 import { StatusBadge } from '@/components/status-badge'
 import { SignaturePad } from './signature-pad'
 import { CircuitCalculator } from './circuit-calculator'
+import { useTechnicianLocation } from '@/hooks/use-technician-location'
 import {
   workOrders,
   serviceDefinitions,
@@ -239,6 +240,16 @@ export function TecnicoApp({ initialOrders }: { initialOrders?: any[] }) {
       setHasUnreadNotifications(false)
     }
   }, [showNotifications])
+
+  // Activar rastreo de ubicación cuando la orden está "en camino"
+  const activeOrderId = active?.id ?? (active as any)?.orderId ?? (active as any)?.ordenId
+  const activeOrderStatus = (active?.status ?? (active as any)?.estado ?? '').toString().toLowerCase()
+  const isOnTheWay = activeOrderStatus.includes('en camino') || activeOrderStatus.includes('en_camino')
+  
+  useTechnicianLocation({
+    orderId: isOnTheWay && activeOrderId ? String(activeOrderId) : undefined,
+    enabled: isOnTheWay && Boolean(activeOrderId),
+  })
 
   const assignedOrders = orders.filter((o: any) => {
     const estado = normalizeTechnicianStatus(o.status ?? o.estado)

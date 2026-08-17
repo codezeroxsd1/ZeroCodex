@@ -18,6 +18,28 @@ const DEV_USERS = [
     role: "cliente" as const,
   },
   {
+    email: "cliente-particular@test.com",
+    name: "Juan Pérez",
+    password: "Test1234",
+    role: "cliente" as const,
+    clientType: "particular",
+    phone: "+56912345678",
+  },
+  {
+    email: "cliente-empresa@test.com",
+    name: "Empresa Test",
+    password: "Test1234",
+    role: "cliente" as const,
+    clientType: "empresa",
+    phone: "+56912345679",
+    companyName: "Test Empresa Ltda.",
+    companyRut: "76.123.456-7",
+    companyEmail: "contacto@test-empresa.com",
+    companyPhone: "+56225123456",
+    companyAddress: "Av. Providencia 1234, Providencia, Santiago, Chile",
+    isApproved: true,
+  },
+  {
     email: "tecnico@test.com",
     name: "Técnico Test",
     password: "Test1234",
@@ -77,6 +99,14 @@ export async function seedDevUsers() {
           name: testUser.name,
           emailVerified: true,
           role: testUser.role,
+          clientType: (testUser as any).clientType || "particular",
+          phone: (testUser as any).phone || null,
+          companyName: (testUser as any).companyName || null,
+          companyRut: (testUser as any).companyRut || null,
+          companyEmail: (testUser as any).companyEmail || null,
+          companyPhone: (testUser as any).companyPhone || null,
+          companyAddress: (testUser as any).companyAddress || null,
+          isApproved: (testUser as any).isApproved ?? (testUser.role === "cliente" ? false : true),
           createdAt: new Date(),
           updatedAt: new Date(),
         })
@@ -99,7 +129,8 @@ export async function seedDevUsers() {
           updatedAt: new Date(),
         })
 
-        console.log(`✅ Usuario creado: ${testUser.email} (${testUser.role})`)
+        const roleLabel = (testUser as any).clientType ? `${testUser.role} ${(testUser as any).clientType}` : testUser.role
+        console.log(`✅ Usuario creado: ${testUser.email} (${roleLabel})`)
       } else {
         console.log(`✓ Usuario ya existe: ${testUser.email}`)
         // Asegurar que la cuenta de credenciales exista y tenga la contraseña correcta

@@ -280,7 +280,7 @@ export const auth = betterAuth({
     emailOTP({
       sendVerificationOnSignUp: true,
       otpLength: 6,
-      expiresIn: 300,
+      expiresIn: 900, // 15 minutes instead of 5 minutes for easier testing
       sendVerificationOTP: async ({ email, otp, type }) => {
         await sendOtpEmail({ email, otp, type })
       },

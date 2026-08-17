@@ -81,38 +81,60 @@ export default function QuotePreview({ quote, onClose }: { quote: any; onClose?:
   const handlePaymentCheckout = async () => {
     const orderId = resolveOrderId()
     if (!orderId) {
-      window.alert('No se pudo determinar el ID de orden para esta cotización.')
+      setStatusMessage('❌ No se pudo determinar el ID de orden para esta cotización.')
       return
     }
 
     const amount = Number(quote?.total ?? quote?.precio ?? quote?.amount ?? 0)
     if (!Number.isFinite(amount) || amount <= 0) {
-      window.alert('No se pudo determinar el monto de la cotización para el pago.')
+      setStatusMessage('❌ No se pudo determinar el monto de la cotización para el pago.')
+      return
+    }
+
+    const payerEmail = quote?.clienteEmail ?? quote?.email ?? ''
+    if (!payerEmail || !payerEmail.includes('@')) {
+      setStatusMessage('❌ Correo electrónico del cliente no válido.')
       return
     }
 
     try {
       setPaymentLoading(true)
-      setStatusMessage(null)
+      setStatusMessage('Iniciando pago con Mercado Pago...')
+      
       const res = await fetch('/api/payments/mercadopago', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           orderId,
           amount,
-          payerEmail: quote?.clienteEmail ?? quote?.email ?? '',
-          payerName: quote?.client ?? quote?.clienteNombre ?? '',
+          payerEmail,
+          payerName: quote?.client ?? quote?.clienteNombre ?? payerEmail,
+          description: `Pago de orden #${orderId}`,
           origin: window.location.origin,
         }),
       })
+      
       const json = await res.json()
-      if (!res.ok || !json?.success || !json?.initPoint) {
-        throw new Error(json?.error || 'No se pudo iniciar el pago')
+      
+      if (!res.ok) {
+        throw new Error(json?.error || `Error del servidor: ${res.status}`)
       }
-      window.location.assign(json.initPoint)
+      
+      if (!json?.success) {
+        throw new Error(json?.error || 'No se pudo procesar la solicitud de pago')
+      }
+      
+      if (!json?.initPoint && !json?.checkoutUrl) {
+        throw new Error('No se recibió el enlace de pago de Mercado Pago')
+      }
+
+      // Redirigir a Mercado Pago
+      const checkoutUrl = json.initPoint || json.checkoutUrl
+      window.location.assign(checkoutUrl)
     } catch (error) {
-      console.error('Payment checkout error', error)
-      setStatusMessage(String(error))
+      console.error('Payment checkout error:', error)
+      const errorMessage = error instanceof Error ? error.message : String(error)
+      setStatusMessage(`❌ Error en el pago: ${errorMessage}`)
     } finally {
       setPaymentLoading(false)
     }
@@ -608,11 +630,11 @@ export default function QuotePreview({ quote, onClose }: { quote: any; onClose?:
               {quoteStatus === 'pendiente_pago' && (
                 <button
                   type="button"
-                  disabled={statusLoading}
-                  onClick={() => updateOrderStatus('pagada', 'Pago recibido', 'El cliente confirmó el pago.')}
+                  disabled={statusLoading || paymentLoading}
+                  onClick={handlePaymentCheckout}
                   className="inline-flex flex-1 items-center justify-center rounded-full bg-primary px-4 py-3 text-sm font-semibold text-white transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  {statusLoading ? 'Procesando...' : 'Confirmar pago recibido'}
+                  {paymentLoading ? 'Redirigiendo a Mercado Pago...' : 'Pagar con Mercado Pago'}
                 </button>
               )}
 

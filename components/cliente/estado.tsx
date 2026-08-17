@@ -7,6 +7,7 @@ import { statusOrder, formatCLP, type ServiceStatus } from '@/lib/data'
 import { StatusBadge } from '@/components/status-badge'
 import { cn } from '@/lib/utils'
 import { updateOrdenStatus } from '@/app/actions/orden'
+import { TechnicianTracking } from './technician-tracking'
 
 export function ClienteEstado({ orders }: { orders: any[] }) {
   const router = useRouter()
@@ -147,30 +148,42 @@ export function ClienteEstado({ orders }: { orders: any[] }) {
       <div className="mx-auto max-w-6xl lg:grid lg:grid-cols-[1.15fr_0.85fr] lg:gap-5">
         <div className="space-y-5">
           <section className="relative overflow-hidden rounded-3xl border border-border bg-card">
-            <div className="relative h-44 bg-[radial-gradient(circle_at_30%_30%,var(--secondary),var(--card))]">
-              <div className="pointer-events-none absolute inset-0 opacity-40 [background-image:linear-gradient(var(--border)_1px,transparent_1px),linear-gradient(90deg,var(--border)_1px,transparent_1px)] [background-size:28px_28px]" />
-              <div className="absolute left-6 top-8 flex flex-col items-center">
-                <span className="flex size-9 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-glow">
-                  <Navigation className="size-4" />
-                </span>
-                <span className="mt-1 rounded-full bg-card px-2 py-0.5 text-[10px] font-medium">
-                  Técnico
-                </span>
-              </div>
-              <div className="absolute bottom-8 right-8 flex flex-col items-center">
-                <span className="flex size-9 items-center justify-center rounded-full bg-secondary">
-                  <MapPin className="size-4 text-primary" />
-                </span>
-                <span className="mt-1 rounded-full bg-card px-2 py-0.5 text-[10px] font-medium">Tú</span>
-              </div>
-            </div>
-            <div className="flex items-center justify-between p-4">
-              <div>
-                <p className="text-xs text-muted-foreground">Orden {orderId}</p>
-                <p className="font-display text-base font-bold">{serviceName}</p>
-              </div>
-              <StatusBadge status={effectiveStatus} />
-            </div>
+            {/* Mostrar mapa solo cuando está en camino */}
+            {effectiveStatus === 'en camino' ? (
+              <TechnicianTracking
+                orderId={orderId}
+                technicianPhone={technicianPhone}
+                technicianName={technicianName}
+                status={effectiveStatus}
+              />
+            ) : (
+              <>
+                <div className="relative h-44 bg-[radial-gradient(circle_at_30%_30%,var(--secondary),var(--card))]">
+                  <div className="pointer-events-none absolute inset-0 opacity-40 [background-image:linear-gradient(var(--border)_1px,transparent_1px),linear-gradient(90deg,var(--border)_1px,transparent_1px)] [background-size:28px_28px]" />
+                  <div className="absolute left-6 top-8 flex flex-col items-center">
+                    <span className="flex size-9 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-glow">
+                      <Navigation className="size-4" />
+                    </span>
+                    <span className="mt-1 rounded-full bg-card px-2 py-0.5 text-[10px] font-medium">
+                      Técnico
+                    </span>
+                  </div>
+                  <div className="absolute bottom-8 right-8 flex flex-col items-center">
+                    <span className="flex size-9 items-center justify-center rounded-full bg-secondary">
+                      <MapPin className="size-4 text-primary" />
+                    </span>
+                    <span className="mt-1 rounded-full bg-card px-2 py-0.5 text-[10px] font-medium">Tú</span>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between p-4">
+                  <div>
+                    <p className="text-xs text-muted-foreground">Orden {orderId}</p>
+                    <p className="font-display text-base font-bold">{serviceName}</p>
+                  </div>
+                  <StatusBadge status={effectiveStatus} />
+                </div>
+              </>
+            )}
           </section>
 
           {shouldShowValidationCard && (

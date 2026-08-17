@@ -491,6 +491,7 @@ export async function crearOrden(data: {
   precio: number
   date: string
   time: string
+  metodoPago?: 'online' | 'terreno'
 }) {
   try {
     const user = await requireUser()
@@ -518,6 +519,9 @@ export async function crearOrden(data: {
       return { success: false, error: 'Capacidad máxima alcanzada para esa franja horaria' }
     }
 
+    // Si es pago online, crear con estado "pendiente_pago"; de lo contrario, "pendiente"
+    const estadoInicial = data.metodoPago === 'online' ? 'pendiente_pago' : 'pendiente'
+
     const insertValues: InferInsertModel<typeof orden> = {
       clienteId: user.id,
       clienteNombre: user.name,
@@ -526,7 +530,7 @@ export async function crearOrden(data: {
       descripcion: data.descripcion,
       direccion: data.direccion,
       urgencia: data.urgencia,
-      estado: 'pendiente',
+      estado: estadoInicial,
       precio: data.precio,
       date: scheduledDate,
       localDate: data.date || null,

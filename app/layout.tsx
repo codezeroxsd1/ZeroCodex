@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next'
 import { Geist, Space_Grotesk } from 'next/font/google'
+import { LeafletStyles } from '@/components/leaflet-styles'
 import './globals.css'
 
 const geistSans = Geist({
@@ -32,8 +33,10 @@ export default function RootLayout({
   return (
     <html lang="es" className={`${geistSans.variable} ${spaceGrotesk.variable} bg-background`}>
       <body className="min-h-screen overflow-x-hidden bg-background font-sans antialiased">
+        <LeafletStyles />
         {children}
       </body>
     </html>
   )
 }
+

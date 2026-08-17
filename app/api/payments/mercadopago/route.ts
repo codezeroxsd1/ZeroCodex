@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { buildMercadoPagoPreferencePayload } from '@/lib/mercadopago'
+import { createMercadoPagoCheckout } from '@/lib/mercadopago-server'
 
 export async function POST(req: Request) {
   try {
@@ -8,45 +8,62 @@ export async function POST(req: Request) {
     const orderId = Number(body?.orderId ?? 0)
     const payerEmail = String(body?.payerEmail ?? '')
     const payerName = String(body?.payerName ?? '')
-    const origin = String(body?.origin ?? process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000')
+    const description = String(body?.description ?? '')
+    
+    // Use origin from client, or fallback to NEXT_PUBLIC_APP_URL
+    let origin = String(body?.origin ?? '').trim()
+    if (!origin) {
+      origin = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+    }
+    
+    console.log('Payment endpoint - origin:', origin, 'orderId:', orderId)
 
-    if (!orderId || !amount || !payerEmail) {
-      return NextResponse.json({ success: false, error: 'Faltan datos del pago' }, { status: 400 })
+    // Validations
+    if (!orderId || orderId <= 0) {
+      return NextResponse.json(
+        { success: false, error: 'ID de orden inválido' },
+        { status: 400 }
+      )
     }
 
-    const payload = buildMercadoPagoPreferencePayload({
+    if (!amount || amount <= 0) {
+      return NextResponse.json(
+        { success: false, error: 'Monto de pago inválido' },
+        { status: 400 }
+      )
+    }
+
+    if (!payerEmail || !payerEmail.includes('@')) {
+      return NextResponse.json(
+        { success: false, error: 'Email del pagador inválido' },
+        { status: 400 }
+      )
+    }
+
+    const result = await createMercadoPagoCheckout({
       orderId,
       amount,
       payerEmail,
-      payerName: payerName || payerEmail,
+      payerName,
       origin,
+      description,
     })
 
-    const accessToken = process.env.MERCADOPAGO_ACCESS_TOKEN
-    if (!accessToken) {
-      return NextResponse.json({
-        success: false,
-        error: 'Mercado Pago no está configurado aún. Define MERCADOPAGO_ACCESS_TOKEN.',
-        preference: payload,
-      }, { status: 500 })
+    if (!result.success) {
+      return NextResponse.json(result, { status: 500 })
     }
 
-    const response = await fetch('https://api.mercadopago.com/checkout/preferences', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(payload),
+    return NextResponse.json({
+      success: true,
+      initPoint: result.initPoint,
+      preferenceId: result.preferenceId,
+      checkoutUrl: result.checkoutUrl,
     })
-
-    const data = await response.json()
-    if (!response.ok) {
-      return NextResponse.json({ success: false, error: data?.message || 'No se pudo crear la preferencia de Mercado Pago' }, { status: 502 })
-    }
-
-    return NextResponse.json({ success: true, initPoint: data.init_point, preferenceId: data.id })
   } catch (error) {
-    return NextResponse.json({ success: false, error: String(error) }, { status: 500 })
+    console.error('POST /api/payments/mercadopago error:', error)
+    return NextResponse.json(
+      { success: false, error: `Error al procesar el pago: ${String(error)}` },
+      { status: 500 }
+    )
   }
 }

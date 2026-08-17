@@ -61,6 +61,34 @@ export function ClienteSolicitar({
   const serviceWithMarkup = calcPriceWithMarkup(base, service.markupPercent)
   const totalBeforeIva = serviceWithMarkup + visit
   // apply active promotions that target total
+  
+  // Detectar retorno desde Mercado Pago
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    
+    const params = new URLSearchParams(window.location.search)
+    const paymentStatus = params.get('payment')
+    const orderId = params.get('orderId')
+    
+    if (paymentStatus && orderId) {
+      console.log(`Payment returned: ${paymentStatus} for order ${orderId}`)
+      
+      if (paymentStatus === 'success') {
+        setSubmissionMessage(`✅ ¡Pago exitoso! Tu orden #${orderId} ha sido registrada. El técnico se contactará pronto.`)
+        setStep('listo')
+      } else if (paymentStatus === 'failure') {
+        setSubmissionMessage(`❌ El pago fue rechazado. Por favor intenta nuevamente.`)
+        setStep('pago')
+      } else if (paymentStatus === 'pending') {
+        setSubmissionMessage(`⏳ Tu pago está siendo procesado. Te notificaremos cuando se confirme.`)
+        setStep('listo')
+      }
+      
+      // Limpiar la URL
+      window.history.replaceState({}, document.title, window.location.pathname)
+    }
+  }, [])
+  
   useEffect(() => {
     let active = true
     fetch('/api/admin/settings')
@@ -101,20 +129,64 @@ export function ClienteSolicitar({
         precio: total,
         date: dateKey,
         time: hour,
+        metodoPago: pay, // 'online' o 'terreno'
       })
 
       if (result?.success && result.ordenId) {
         setCreatedOrderId(String(result.ordenId))
-        setSubmissionMessage(pay === 'online' ? 'Tu solicitud quedó registrada y ya puedes continuar con el pago.' : 'Tu reserva quedó confirmada. El administrador la revisará pronto.')
-        // refresh availability for selected day so UI blocks if capacity reached
-        try {
-          const resp = await fetch(`/api/agenda/availability?date=${encodeURIComponent(selectedDateKey)}`)
-          const json = await resp.json()
-          if (json?.success && json.counts) setAvailability(json.counts)
-        } catch (e) {
-          // ignore
+        
+        // Si es pago online, redirigir a Mercado Pago
+        if (pay === 'online') {
+          try {
+            setSubmissionMessage('Iniciando pago con Mercado Pago...')
+            const paymentRes = await fetch('/api/payments/mercadopago', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                orderId: String(result.ordenId),
+                amount: total,
+                payerEmail: 'cliente@example.com', // TODO: obtener email del usuario logueado
+                payerName: 'Cliente',
+                description: `Pago de orden #${result.ordenId}`,
+                origin: typeof window !== 'undefined' ? window.location.origin : '',
+              }),
+            })
+
+            const paymentJson = await paymentRes.json()
+
+            if (!paymentRes.ok || !paymentJson?.success) {
+              throw new Error(paymentJson?.error || 'No se pudo procesar el pago')
+            }
+
+            if (paymentJson?.initPoint || paymentJson?.checkoutUrl) {
+              // Redirigir a Mercado Pago
+              const checkoutUrl = paymentJson.initPoint || paymentJson.checkoutUrl
+              if (typeof window !== 'undefined') {
+                window.location.assign(checkoutUrl)
+              }
+              return
+            } else {
+              throw new Error('No se recibió el enlace de pago')
+            }
+          } catch (paymentError) {
+            console.error('Payment error:', paymentError)
+            setSubmissionMessage(`❌ Error en el pago: ${paymentError instanceof Error ? paymentError.message : String(paymentError)}`)
+            setIsSubmitting(false)
+            return
+          }
+        } else {
+          // Pago en terreno
+          setSubmissionMessage('Tu reserva quedó confirmada. El administrador la revisará pronto.')
+          // refresh availability for selected day so UI blocks if capacity reached
+          try {
+            const resp = await fetch(`/api/agenda/availability?date=${encodeURIComponent(selectedDateKey)}`)
+            const json = await resp.json()
+            if (json?.success && json.counts) setAvailability(json.counts)
+          } catch (e) {
+            // ignore
+          }
+          setStep('listo')
         }
-        setStep('listo')
       } else {
         setSubmissionMessage(result?.error || 'No se pudo registrar la solicitud. Intenta nuevamente.')
       }
@@ -405,13 +477,19 @@ export function ClienteSolicitar({
               <div className="flex size-20 items-center justify-center rounded-full bg-primary/15 text-primary shadow-glow">
                 <CheckCircle2 className="size-10" />
               </div>
-              <div>
-                <p className="font-display text-xl font-bold">¡Servicio agendado!</p>
-                <p className="mt-1 text-sm text-muted-foreground text-balance">
-                  Tu {service.name.toLowerCase()} quedó reservado para el {day} de Julio a las{' '}
-                  {hour || '15:30'} hrs. Te avisaremos cuando el técnico esté en camino.
-                </p>
-              </div>
+              {submissionMessage ? (
+                <div className="rounded-2xl border border-primary/20 bg-primary/10 p-3 text-sm text-primary">
+                  {submissionMessage}
+                </div>
+              ) : (
+                <div>
+                  <p className="font-display text-xl font-bold">¡Servicio agendado!</p>
+                  <p className="mt-1 text-sm text-muted-foreground text-balance">
+                    Tu {service.name.toLowerCase()} quedó reservado para el {day} de Julio a las{' '}
+                    {hour || '15:30'} hrs. Te avisaremos cuando el técnico esté en camino.
+                  </p>
+                </div>
+              )}
               <div className="w-full rounded-2xl border border-border bg-card p-4 text-left text-sm">
                 <Row label="Orden" value={createdOrderId ? `ZI-${createdOrderId}` : 'ZI-2044'} />
                 <Row label="Total" value={formatCLP(total)} />

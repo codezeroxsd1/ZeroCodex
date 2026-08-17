@@ -119,17 +119,27 @@ export function AuthForm({
 
     try {
       const authClientAny = authClient as any
+      console.log('[auth-form] Verifying OTP', { email, otp: verificationCode })
+      
       const { data, error } = await authClientAny.emailOtp.verifyEmail({
         email,
         otp: verificationCode,
       })
 
-      if (error) throw new Error(error.message || "No se pudo verificar el código")
+      console.log('[auth-form] OTP verification result', { data, error })
 
+      if (error) {
+        console.error('[auth-form] OTP verification error', error)
+        throw new Error(error.message || "No se pudo verificar el código")
+      }
+
+      console.log('[auth-form] OTP verified successfully, redirecting...', { user: data?.user })
       const signedRole = ((data?.user as { role?: Role })?.role as Role) || role
       router.push(homeByRole[signedRole])
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Ocurrió un error al verificar el código")
+      const message = err instanceof Error ? err.message : "Ocurrió un error al verificar el código"
+      console.error('[auth-form] Error in handleVerifyCode', { error: err, message })
+      setError(message)
     } finally {
       setLoading(false)
     }
@@ -201,6 +211,7 @@ export function AuthForm({
 
     try {
       if (isSignUp && verificationStep) {
+        console.log('[auth-form] Submitting verification code', { email, verificationCode })
         await handleVerifyCode()
         return
       }
