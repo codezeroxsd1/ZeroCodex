@@ -16,7 +16,7 @@ function getDbPool() {
 // Guardar ubicación del técnico
 export async function POST(
   request: NextRequest,
-  { params }: { params: { orderId: string } }
+  { params }: { params: Promise<{ orderId: string }> }
 ) {
   try {
     const user = await getSessionUser()
@@ -36,7 +36,7 @@ export async function POST(
       )
     }
 
-    const orderId = params.orderId
+    const { orderId } = await params
     const pool = getDbPool()
 
     // Guardar en tabla de locations (crear si no existe)
@@ -61,10 +61,10 @@ export async function POST(
 // Obtener ubicación del técnico
 export async function GET(
   request: NextRequest,
-  { params }: { params: { orderId: string } }
+  { params }: { params: Promise<{ orderId: string }> }
 ) {
   try {
-    const orderId = params.orderId
+    const { orderId } = await params
 
     const pool = getDbPool()
     const result = await pool.query(
