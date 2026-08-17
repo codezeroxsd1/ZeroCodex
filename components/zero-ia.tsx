@@ -5,6 +5,7 @@ import { useSession } from '@/lib/auth-client'
 
 export function ZeroIA(_props: { orders?: any[]; compact?: boolean; onGoTab?: any; onSelectService?: any }) {
   const { data: session } = useSession()
+  const sessionUser = session?.user as { role?: string } | undefined
   const [messages, setMessages] = useState<any[]>([])
   const [input, setInput] = useState('')
   const [imgOk, setImgOk] = useState(true)
@@ -29,10 +30,14 @@ export function ZeroIA(_props: { orders?: any[]; compact?: boolean; onGoTab?: an
 
   // Load user role from session
   useEffect(() => {
-    if (session?.user?.role) {
-      setUserRole(session.user.role as 'cliente' | 'tecnico' | 'admin')
+    const nextRole = sessionUser?.role
+    if (nextRole === 'cliente' || nextRole === 'tecnico' || nextRole === 'admin') {
+      setUserRole(nextRole)
+      return
     }
-  }, [session])
+
+    setUserRole(null)
+  }, [sessionUser?.role])
 
   // Save messages to localStorage
   useEffect(() => {
