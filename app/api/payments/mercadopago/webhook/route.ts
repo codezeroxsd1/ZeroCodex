@@ -2,7 +2,8 @@ import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { orden } from '@/lib/db/schema'
 import { eq } from 'drizzle-orm'
-import { getPaymentDetails, mapMercadoPagoStatusToOrderStatus } from '@/lib/mercadopago-server'
+import { getPaymentDetails } from '@/lib/mercadopago-server'
+import { mapMercadoPagoStatusToOrderStatus } from '@/lib/mercadopago-config'
 
 /**
  * Webhook endpoint para recibir notificaciones de Mercado Pago
