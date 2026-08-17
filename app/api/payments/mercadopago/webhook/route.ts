@@ -58,10 +58,10 @@ export async function POST(req: Request) {
 
     // Mapear estado de Mercado Pago a estado de orden
     const mappedStatus = mapMercadoPagoStatusToOrderStatus(paymentStatus)
-    
-    // Si la orden estaba en "pendiente_pago" y el pago fue aprobado, cambiar a "pendiente"
-    // Esto hace que la orden aparezca en el admin solo después de ser pagada
-    let newOrderStatus = mappedStatus
+
+    // El flujo de negocio usa 'pendiente' para la orden y la función de mapeo
+    // es más restrictiva. Es necesario ampliar el tipo para la actualización real.
+    let newOrderStatus: string = mappedStatus
     if (mappedStatus === 'pagada') {
       newOrderStatus = 'pendiente'
     }
